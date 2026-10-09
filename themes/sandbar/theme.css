@@ -305,6 +305,15 @@ body:has([data-state="collapsed"][data-collapsible="offcanvas"] [data-testid="pl
 @media (max-width: 1900px) {
   [data-split-resize-grid-root].flex-row:has(> :nth-child(5)):has([data-focused="true"]):not(:has([data-maximized])) {
     --bb-slide-strip: 2.75rem;
+    /* The row's width and its number of strips, so a folded body can keep the open width. */
+    container-type: inline-size;
+    --bb-fold-strips: 2;
+
+    &:has(> :nth-child(7)) { --bb-fold-strips: 3; }
+    &:has(> :nth-child(9)) { --bb-fold-strips: 4; }
+    &:has(> :nth-child(11)) { --bb-fold-strips: 5; }
+    &:has(> :nth-child(13)) { --bb-fold-strips: 6; }
+    &:has(> :nth-child(15)) { --bb-fold-strips: 7; }
 
     /* The seams stay, but they can't be dragged while panes are folded. */
     > [role="separator"],
@@ -349,9 +358,16 @@ body:has([data-state="collapsed"][data-collapsible="offcanvas"] [data-testid="pl
 
       /* A pane sliding away keeps its open look until it arrives. */
       &:not([data-blade="close"]) {
-        /* The body keeps its scroll position but isn't drawn. */
+        /*
+         * The body keeps its scroll position but isn't drawn. It also keeps
+         * the open pane's width (the row less its strips and 1px seams).
+         * bb still measures a folded thread when new messages arrive, and at
+         * strip width each message came out thousands of pixels tall, so the
+         * pane could open blank or part way up the thread (9 Oct 2026).
+         */
         [data-split-pane-id] > :first-child > :not(header) {
           content-visibility: hidden;
+          width: calc(100cqw - var(--bb-fold-strips) * (var(--bb-slide-strip) + 1px));
         }
 
         /*
