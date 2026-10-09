@@ -1,0 +1,493 @@
+/*
+ * Sandbar - sand and sea, sampled from Liam's desktop wallpaper.
+ * Light: cream-sand canvas, deep-sea ink, teal accent.
+ * Dark: deep-sea navy canvas, sand-cream ink, mint accent.
+ * Terracotta cliff tone for file paths; plum shadow for merged PRs.
+ * The sidebar, top bars and hover fills sit in the mint-aqua sky; the
+ * content area stays sand, so the window reads like the horizon.
+ */
+
+:root, .light {
+  --canvas: #f7eedb;
+  --ink: #173a4f;
+  --primary: #1f7470;
+  --primary-foreground: #fbf5e8;
+  --sidebar: #d4ede6;
+  --sidebar-accent: #c3e5dc;
+  --sidebar-border: #a9d3c9;
+  --surface-scrim: color-mix(in oklab, #dcefe8 92%, transparent);
+  --secondary: #dfece5;
+  --accent: #dfece5;
+  --muted: #d2e8e1;
+  --state-hover: color-mix(in oklab, #2a8a8f 10%, transparent);
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --timeline-accent: #1f7470;
+  --file-accent: #9c5536;
+  --destructive: #b8483a;
+  --destructive-text: #a33a2d;
+  --warning: #c27a2c;
+  --warning-text: #8a5314;
+  --attention: #d9a441;
+  --success: #3f7630;
+  --diff-added: #3f7630;
+  --diff-removed: #b8483a;
+  --pr-merged: #7b4f9e;
+  --ansi-0: #173a4f;
+  --ansi-1: #c4533f;
+  --ansi-2: #6f9a4e;
+  --ansi-3: #d9a441;
+  --ansi-4: #2f6f93;
+  --ansi-5: #9a5a7e;
+  --ansi-6: #2a8a8f;
+  --ansi-7: #e8dcc0;
+  --ansi-8: #5b6b73;
+  --ansi-9: #e57a62;
+  --ansi-10: #9cc47a;
+  --ansi-11: #f1bf65;
+  --ansi-12: #6fa8c8;
+  --ansi-13: #c98bb0;
+  --ansi-14: #7fdcca;
+  --ansi-15: #f9f0dc;
+  /* Readable text drawn on each ANSI background (black/white by contrast). */
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #ffffff;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #ffffff;
+  --ansi-bg-fg-5: #ffffff;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
+
+.dark {
+  --canvas: #132f40;
+  --ink: #f3e6c8;
+  --primary: #7fdcca;
+  --primary-foreground: #0f2a38;
+  --sidebar: #17404c;
+  --sidebar-accent: #20505b;
+  --sidebar-border: #2a5b64;
+  --surface-scrim: color-mix(in oklab, #173c4a 92%, transparent);
+  --secondary: #1f4250;
+  --accent: #1f4250;
+  --muted: #234855;
+  --state-hover: color-mix(in oklab, #7fd6c6 12%, transparent);
+  --timeline-accent: #7fdcca;
+  --file-accent: #e0a878;
+  --destructive: #c4533f;
+  --destructive-text: #f0937e;
+  --warning: #e6ae55;
+  --warning-text: #f1c070;
+  --attention: #f1bf65;
+  --success: #8cc47a;
+  --diff-added: #8cc47a;
+  --diff-removed: #f0937e;
+  --pr-merged: #b592e0;
+}
+
+/*
+ * Taller top bar (2 Oct 2026). bb's top row is 3rem; this doubles it so
+ * thread titles in the pane headers wrap onto two lines, and the buttons on
+ * the right stack in two rows to give the title more width. The sidebar row
+ * and the arrows read the same variable, so they stay centred with it.
+ * Everything fits in 5rem if 6rem feels too tall. To undo, delete from here
+ * down and re-run `bb theme set sandbar`.
+ */
+:root {
+  --bb-app-chrome-row-height: 6rem;
+}
+
+[data-testid="app-page-header-content-row"] .bb-thread-title > .truncate {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Two rows of buttons: maximise and close in the top-right corner, then
+ * Labels, rename, model and Commit underneath. Scoped to thread headers so
+ * other pages keep their single row.
+ */
+[data-app-page-header-actions]:has(> [data-thread-header-workflow-actions]) {
+  flex-direction: column-reverse;
+  align-items: flex-end;
+}
+
+/* An unlabelled thread shows just the dashed circle, not the word "Labels". */
+[data-thread-header-workflow-actions] button[aria-label="Edit thread labels"] > .truncate {
+  display: none;
+}
+
+/* Sidebar Pro's parent and child slots still take a gap when they're empty. */
+[data-thread-header-workflow-actions] [aria-label="Parent thread"]:empty,
+[data-thread-header-workflow-actions] [aria-label="Child threads"]:empty {
+  display: none;
+}
+
+/*
+ * The right-panel toggle is pinned 10px from the top. Line it up with the
+ * top row of buttons, which starts 30px above the middle of the bar.
+ */
+[data-testid="split-workspace-panel-toggle"] {
+  top: calc(var(--bb-app-chrome-row-height) / 2 - 30px);
+}
+
+/*
+ * Pane attention (6 Oct 2026). The Pane Attention plugin
+ * (~/bb-plugins/bb-plugin-pane-attention) sets data-pane-attention on a
+ * split pane that isn't focused: "done" when its thread finished a turn
+ * while you were in another pane, "needs-you" when it's waiting on you or
+ * the turn failed. Focusing the pane clears it. Done is the teal of the
+ * unread dot; needs you is the orange of the sidebar's question mark, with
+ * a thicker bar, a deeper tint and a ringed dot. On an open pane the bar
+ * runs along the top of the header; on a folded strip it runs down the
+ * left edge. To undo, delete this block and the rules marked "Pane
+ * attention on a folded strip" in the sliding panes block below, then
+ * re-run `bb theme set sandbar`. Removing the plugin turns it off too.
+ */
+[data-pane-attention]:not([data-focused="true"]) {
+  --bb-pane-attention: var(--primary);
+  --bb-pane-attention-text: var(--primary);
+  --bb-pane-attention-tint: 10%;
+  --bb-pane-attention-bar: 2px;
+  --bb-pane-attention-dot: 6px;
+  --bb-pane-attention-ring: 0px;
+
+  > :first-child > header {
+    background-color: color-mix(in oklab, var(--bb-pane-attention) var(--bb-pane-attention-tint), var(--surface-scrim));
+  }
+
+  > :first-child > header::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: var(--bb-pane-attention-bar);
+    background: var(--bb-pane-attention);
+    pointer-events: none;
+  }
+
+  [data-testid="app-page-header-content-row"]::before {
+    content: "";
+    flex: none;
+    width: var(--bb-pane-attention-dot);
+    height: var(--bb-pane-attention-dot);
+    border-radius: 9999px;
+    background: var(--bb-pane-attention);
+    box-shadow: 0 0 0 var(--bb-pane-attention-ring) color-mix(in oklab, var(--bb-pane-attention) 28%, transparent);
+  }
+
+  [data-testid="app-page-header-content-row"] .bb-thread-title {
+    color: var(--bb-pane-attention-text);
+  }
+}
+
+[data-pane-attention="needs-you"]:not([data-focused="true"]) {
+  --bb-pane-attention: var(--warning);
+  --bb-pane-attention-text: var(--warning-text);
+  --bb-pane-attention-tint: 20%;
+  --bb-pane-attention-bar: 4px;
+  --bb-pane-attention-dot: 8px;
+  --bb-pane-attention-ring: 3px;
+
+  [data-testid="app-page-header-content-row"] .bb-thread-title {
+    font-weight: 500;
+  }
+}
+
+/*
+ * Usage ring by the sidebar toggle (7 Oct 2026). With the sidebar hidden,
+ * the Usage Meter plugin's ring comes out of the sidebar footer and sits
+ * just above the toggle, a little smaller, with the same hover and click
+ * popup. The toggle stays where it is in both states, so it's always in
+ * the same place to bring the sidebar back. bb only slides the hidden
+ * sidebar off screen, so the ring's button is still there to move. While
+ * the ring is out:
+ * - the hidden sidebar's layer is lifted to the toggle's level, above the
+ *   pane headers;
+ * - the toggle's column lets clicks through to the ring, and in the Mac
+ *   app it stops being a window drag area, or a click on the ring would
+ *   drag the window instead;
+ * - bb's own "Usage limits" tooltip is hidden, because it would open over
+ *   the toggle and the popup already says it.
+ * In a Mac window that isn't full screen, bb moves the toggle 84px right to
+ * clear the window buttons, and the ring follows it. The rules hang off the
+ * hidden sidebar rather than a :has() on the app's root: the root version
+ * made the browser restyle the whole window on every pane switch, about
+ * 30ms each time on the laptop (measured 7 Oct). To undo, delete this block
+ * and re-run `bb theme set sandbar`. Removing Usage Meter turns it off too.
+ */
+[data-testid="app-layout-root"] > [data-state="collapsed"][data-collapsible="offcanvas"] {
+  > [data-sidebar="panel"]:has([data-testid="plugin-sidebar-footer-action-usage-meter-usage"]) {
+    z-index: 44;
+  }
+
+  /*
+   * The toggle is 28px and centred in the top bar, so it starts 34px down.
+   * The ring is 26px, centred over it, and starts 7px from the top: about
+   * as far from the window's edge as from the toggle's icon.
+   */
+  [data-testid="plugin-sidebar-footer-action-usage-meter-usage"] {
+    position: fixed !important;
+    top: calc(var(--bb-app-chrome-row-height) / 2 - 41px);
+    left: 13px;
+    visibility: visible;
+    scale: 0.8125;
+    transform-origin: top left;
+  }
+
+  &:has(~ [data-testid="app-desktop-sidebar-trigger"][class~="left-[84px]"]) [data-testid="plugin-sidebar-footer-action-usage-meter-usage"] {
+    left: 85px;
+  }
+
+  &:has([data-testid="plugin-sidebar-footer-action-usage-meter-usage"]) ~ :is([data-testid="app-sidebar-trigger-overlay"], [data-testid="app-desktop-sidebar-trigger"]) {
+    pointer-events: none;
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+
+    > button {
+      pointer-events: auto;
+    }
+  }
+}
+
+body:has([data-state="collapsed"][data-collapsible="offcanvas"] [data-testid="plugin-sidebar-footer-action-usage-meter-usage"]:is([data-state="delayed-open"], [data-state="instant-open"])) > [data-radix-popper-content-wrapper]:has(> :is([data-state="delayed-open"], [data-state="instant-open"])) {
+  display: none;
+}
+
+/*
+ * Sliding panes on the laptop (6 Oct 2026). Below 1900px wide, a row of
+ * three or more split panes works like Obsidian's stacked tabs: the focused
+ * pane takes the width and the others fold into thin strips with the title
+ * running down them. Click a strip, or use Cmd+1 to Cmd+8 or Cmd+Shift and
+ * an arrow, to open it. Two panes stay side by side, a top/bottom pair
+ * folds as one strip, and nothing changes while a pane is maximised. The
+ * big monitor is 2560px wide, so it never slides. To undo, delete from here
+ * to the end of the file and re-run `bb theme set sandbar`.
+ *
+ * Blade slide (7 Oct 2026). Switching plays like the Xbox 360 dashboard
+ * blades: the pane you open and the pane you leave slide as one solid sheet
+ * with the strips between them, at full width, so no text re-wraps on the
+ * way. The Pane Attention plugin drives the motion
+ * (~/bb-plugins/bb-plugin-pane-attention, src/blades.ts) and the rules
+ * marked data-blade below draw it. Without the plugin the strips ease
+ * between widths instead, the way they did on 6 Oct.
+ *
+ * To tune it, change the two values just below and re-run
+ * `bb theme set sandbar`. The duration is the whole slide; the easing is a
+ * decelerating curve, so most of the travel happens in the first third.
+ * To turn it off, set --bb-blade-duration to 0ms and switching is instant.
+ * It's also off whenever macOS has Reduce motion on.
+ */
+:root {
+  --bb-blade-duration: 360ms;
+  --bb-blade-easing: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bb-blade-duration: 0ms;
+  }
+}
+
+@media (max-width: 1900px) {
+  [data-split-resize-grid-root].flex-row:has(> :nth-child(5)):has([data-focused="true"]):not(:has([data-maximized])) {
+    --bb-slide-strip: 2.75rem;
+
+    /* The seams stay, but they can't be dragged while panes are folded. */
+    > [role="separator"],
+    > [role="separator"] * {
+      pointer-events: none;
+    }
+
+    /* Without Pane Attention, each slot eases between strip and full width. */
+    html:not([data-pane-blades]) & > :not([role="separator"]) {
+      transition: flex-grow var(--bb-blade-duration) var(--bb-blade-easing),
+        flex-basis var(--bb-blade-duration) var(--bb-blade-easing);
+    }
+
+    /* The slot holding the focused pane takes the room. */
+    > :not([role="separator"]):has([data-focused="true"]) {
+      flex: 1 1 0 !important;
+    }
+
+    /*
+     * With the sidebar hidden in a window (not full screen), bb pads the
+     * top-left pane by 104px to clear the window and sidebar buttons. When
+     * that pane is folded, an open pane in the second or third slot takes
+     * up whatever the strips don't cover.
+     */
+    &:has(> :first-child [class~="pl-[104px]"]):not(:has(> :first-child [data-focused="true"])) {
+      > :nth-child(3):has([data-focused="true"]) [data-testid="app-page-header-content-row"] {
+        padding-left: calc(104px - var(--bb-slide-strip) - 1px);
+      }
+
+      > :nth-child(5):has([data-focused="true"]) [data-testid="app-page-header-content-row"] {
+        padding-left: calc(104px - 2 * var(--bb-slide-strip) - 2px);
+      }
+    }
+
+    /* Every other slot folds to a strip. */
+    > :not([role="separator"]):not(:has([data-focused="true"])) {
+      flex: 0 0 var(--bb-slide-strip) !important;
+
+      [data-split-pane-id] {
+        cursor: pointer;
+      }
+
+      /* A pane sliding away keeps its open look until it arrives. */
+      &:not([data-blade="close"]) {
+        /* The body keeps its scroll position but isn't drawn. */
+        [data-split-pane-id] > :first-child > :not(header) {
+          content-visibility: hidden;
+        }
+
+        /*
+         * The header covers the strip and only the title shows. It starts
+         * below the top bar, clear of the sidebar and right-panel buttons.
+         */
+        [data-split-pane-id] > :first-child > header {
+          position: absolute;
+          inset: 0;
+          height: auto;
+          padding: 0;
+          border-bottom: 0;
+          /* The Mac app makes headers a window drag area, which eats clicks. */
+          app-region: no-drag;
+          -webkit-app-region: no-drag;
+        }
+
+        [data-split-pane-id]:hover > :first-child > header {
+          background-image: linear-gradient(var(--state-hover), var(--state-hover));
+        }
+
+        [data-testid="app-page-header-content-row"] {
+          height: 100%;
+          flex-direction: column;
+          align-items: center;
+          padding: calc(var(--bb-app-chrome-row-height) + 0.75rem) 0 1rem !important;
+        }
+
+        [data-testid="app-page-header-content-row"] > :not(:first-child),
+        [data-testid="thread-detail-header-actions-menu"] {
+          display: none;
+        }
+
+        [data-testid="app-page-header-content-row"] > :first-child {
+          writing-mode: vertical-rl;
+          min-height: 0;
+          pointer-events: none;
+          color: var(--muted-foreground);
+
+          * {
+            min-height: 0;
+            margin: 0;
+            padding: 0;
+            color: inherit;
+          }
+        }
+
+        [data-testid="app-page-header-content-row"] .bb-thread-title > .truncate {
+          display: block;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+
+        /*
+         * Pane attention on a folded strip: the bar runs down the left edge
+         * and the title takes the colour. See the Pane attention block above.
+         */
+        [data-pane-attention] > :first-child > header::after {
+          inset: 0 auto 0 0;
+          width: var(--bb-pane-attention-bar);
+          height: auto;
+        }
+
+        [data-pane-attention] [data-testid="app-page-header-content-row"] > :first-child {
+          color: var(--bb-pane-attention-text);
+        }
+      }
+    }
+
+    /*
+     * The pane being folded during a blade slide: it stays at the open width
+     * and slides towards its strip, clipped on the side that doesn't move.
+     */
+    > [data-blade="close"] {
+      [data-split-pane-id] {
+        flex: none;
+        width: var(--bb-blade-width);
+        overflow: visible;
+        clip-path: inset(0 calc(100% - var(--bb-slide-strip)) 0 -100vw);
+      }
+
+      &[data-blade-edge="right"] {
+        &:has(> [data-split-pane-id]),
+        :has(> [data-split-pane-id]) {
+          justify-content: flex-end;
+        }
+
+        [data-split-pane-id] {
+          clip-path: inset(0 -100vw 0 calc(100% - var(--bb-slide-strip)));
+        }
+
+        [data-split-pane-id]::after {
+          left: auto;
+          right: 0;
+        }
+      }
+    }
+
+    /* The pane being opened slides in clipped to its own slot. */
+    > [data-blade="open"] {
+      clip-path: inset(0);
+    }
+
+    /*
+     * The strip title during a blade slide: it fades out of the opening pane
+     * as it leaves the strip, and into the strip of the pane being folded.
+     * It matches the real strip title (13px, 108px down, centred), so the
+     * swap at the end doesn't show.
+     */
+    > :is([data-blade="close"], [data-blade="settle"]) [data-split-pane-id]::after,
+    > [data-blade="open"] [data-split-pane-id] > :first-child::before {
+      content: attr(data-blade-title);
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 22;
+      box-sizing: border-box;
+      width: var(--bb-slide-strip);
+      padding: calc(var(--bb-app-chrome-row-height) + 0.75rem) 0 1rem;
+      background-color: var(--surface-scrim);
+      color: var(--muted-foreground);
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.42857;
+      writing-mode: vertical-rl;
+      align-content: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    > [data-blade="open"][data-blade-edge="right"] [data-split-pane-id] > :first-child::before {
+      left: auto;
+      right: 0;
+    }
+  }
+}

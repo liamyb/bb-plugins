@@ -1,0 +1,115 @@
+diff --git a/src/NotificationCenter.tsx b/src/NotificationCenter.tsx
+index fd11693..52c414e 100644
+--- a/src/NotificationCenter.tsx
++++ b/src/NotificationCenter.tsx
+@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
+ import { threadNeedsAttention } from "./attention";
+ import { openTasksPluginTask } from "./assigned-tasks";
+ import { closeThreadOsNotification } from "./desktop-alerts";
++import { openThreadFromNotification } from "./open-thread";
+ import {
+   applyUnreadBadgeCount,
+   useNotificationEngine,
+@@ -133,7 +134,7 @@ export function NotificationCenter() {
+     }
+     if (item.targetKind === "thread") {
+       await clearThreadAttention(item.targetId);
+-      navigate.toThread(item.targetId);
++      openThreadFromNotification(item.targetId, (id) => navigate.toThread(id));
+       return;
+     }
+     openTasksPluginTask(item.targetId);
+diff --git a/src/open-thread.test.ts b/src/open-thread.test.ts
+new file mode 100644
+index 0000000..996312a
+--- /dev/null
++++ b/src/open-thread.test.ts
+@@ -0,0 +1,34 @@
++import { describe, expect, it, vi } from "vitest";
++import {
++  PANE_KEEPER_OPEN_THREAD_EVENT,
++  openThreadFromNotification,
++} from "./open-thread";
++
++describe("openThreadFromNotification", () => {
++  it("navigates when nothing is listening", () => {
++    const navigate = vi.fn();
++    openThreadFromNotification("thr_1", navigate, new EventTarget());
++    expect(navigate).toHaveBeenCalledWith("thr_1");
++  });
++
++  it("leaves the thread to Pane Keeper when it claims the event", () => {
++    const target = new EventTarget();
++    const seen: unknown[] = [];
++    target.addEventListener(PANE_KEEPER_OPEN_THREAD_EVENT, (event) => {
++      seen.push((event as CustomEvent).detail);
++      event.preventDefault();
++    });
++    const navigate = vi.fn();
++    openThreadFromNotification("thr_2", navigate, target);
++    expect(seen).toEqual([{ threadId: "thr_2" }]);
++    expect(navigate).not.toHaveBeenCalled();
++  });
++
++  it("still navigates when a listener lets the event pass", () => {
++    const target = new EventTarget();
++    target.addEventListener(PANE_KEEPER_OPEN_THREAD_EVENT, () => undefined);
++    const navigate = vi.fn();
++    openThreadFromNotification("thr_3", navigate, target);
++    expect(navigate).toHaveBeenCalledWith("thr_3");
++  });
++});
+diff --git a/src/open-thread.ts b/src/open-thread.ts
+new file mode 100644
+index 0000000..bc67aea
+--- /dev/null
++++ b/src/open-thread.ts
+@@ -0,0 +1,27 @@
++// A notification click offers the thread to the Pane Keeper plugin first,
++// which opens it beside the focused split pane rather than over it. Without
++// Pane Keeper, or with its notificationClicks setting off, nothing claims the
++// event and the click navigates exactly as before.
++
++/**
++ * Pane Keeper listens for this on `window` and calls `preventDefault()` once
++ * it has opened the thread.
++ */
++export const PANE_KEEPER_OPEN_THREAD_EVENT = "pane-keeper:open-thread";
++
++export function openThreadFromNotification(
++  threadId: string,
++  navigateToThread: (threadId: string) => void,
++  target: EventTarget | undefined = typeof window === "undefined"
++    ? undefined
++    : window,
++): void {
++  if (target !== undefined) {
++    const event = new CustomEvent(PANE_KEEPER_OPEN_THREAD_EVENT, {
++      detail: { threadId },
++      cancelable: true,
++    });
++    if (!target.dispatchEvent(event)) return;
++  }
++  navigateToThread(threadId);
++}
+diff --git a/src/useNotificationEngine.ts b/src/useNotificationEngine.ts
+index 6593fbe..5eb6a5c 100644
+--- a/src/useNotificationEngine.ts
++++ b/src/useNotificationEngine.ts
+@@ -27,6 +27,7 @@ import {
+   openTasksPluginTask,
+   type AssignedTask,
+ } from "./assigned-tasks";
++import { openThreadFromNotification } from "./open-thread";
+ import {
+   closeThreadOsNotification,
+   ensureNotificationPermission,
+@@ -489,7 +490,7 @@ export function useNotificationEngine(): NotificationEngineState {
+       mutedThreadIds,
+       openThread: (threadId) => {
+         void threadActions.setRead(threadId, true).catch(() => undefined);
+-        navigate.toThread(threadId);
++        openThreadFromNotification(threadId, (id) => navigate.toThread(id));
+       },
+       record: async (thread) => {
+         await rpc.call("record", {

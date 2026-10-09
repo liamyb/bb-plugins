@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-pane-attention",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Marks an unfocused split pane whose thread finished a turn, or is waiting on you, and slides folded panes like Xbox 360 blades.",
+  "license": "MIT",
+  "engines": {
+    "bb": ">=0.44",
+    "bbPluginSdk": ">=0.5.29"
+  },
+  "bb": {
+    "name": "Pane Attention",
+    "description": "Marks unfocused split panes whose thread finished a turn, or is waiting on you, and plays the blade slide between folded panes. A theme draws both.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": []
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.5.29",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

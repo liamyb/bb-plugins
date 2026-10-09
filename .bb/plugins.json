@@ -1,0 +1,19 @@
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "liamyb-bb-plugins",
+  "plugins": [
+    {
+      "name": "pane-keeper",
+      "source": "./plugins/pane-keeper"
+    },
+    {
+      "name": "pane-attention",
+      "source": "./plugins/pane-attention"
+    },
+    {
+      "name": "message-times",
+      "source": "./plugins/message-times"
+    }
+  ]
+}
