@@ -1,0 +1,36 @@
+diff --git a/plugins/usage-meter/app.tsx b/plugins/usage-meter/app.tsx
+index 4a69c0d..b5b429d 100644
+--- a/plugins/usage-meter/app.tsx
++++ b/plugins/usage-meter/app.tsx
+@@ -50,7 +50,14 @@ import { UsageAccessory } from "./components/UsageAccessory";
+ import { UsagePage } from "./components/UsagePage";
+ 
+ const ACTION_ID = "usage";
+-const BUTTON_SELECTOR = `[data-testid="plugin-sidebar-footer-action-${PLUGIN_ID}-${ACTION_ID}"]`;
++const FOOTER_SELECTOR = `[data-testid="plugin-sidebar-footer-action-${PLUGIN_ID}-${ACTION_ID}"]`;
++// Local patch (rail-rings): bb 0.46 shows plugin pages as icons in a rail down
++// the left, and the rail stays when the sidebar is hidden. The rings go on the
++// Usage page's rail icon when it's shown there, and on the footer button
++// otherwise. The rail comes first in the document, so querySelector finds it
++// first. A click on the rail icon opens the page, like every other rail icon.
++const RAIL_SELECTOR = `[data-nav-rail-item="${PLUGIN_ID}/usage"] button`;
++const BUTTON_SELECTOR = `${RAIL_SELECTOR}, ${FOOTER_SELECTOR}`;
+ 
+ // A bridge between the host's `run` and the content script: they live in
+ // different modules of one window, so keyboard activation reaches the popup as an event.
+@@ -895,8 +902,14 @@ export default definePluginApp((app) => {
+       document.addEventListener(
+         "pointerdown",
+         (event) => {
+-          if (event.button !== 0 || !buttonFrom(event.target)) return;
++          const pressed = buttonFrom(event.target);
++          if (event.button !== 0 || !pressed) return;
+           cancelHover();
++          // Local patch (rail-rings): the rail icon keeps its own click.
++          if (pressed.matches(RAIL_SELECTOR)) {
++            popup.close();
++            return;
++          }
+           suppressClick = true;
+           toggle();
+         },

@@ -146,8 +146,152 @@
 }
 
 /*
+ * No frame (bb 0.46.0, 12 Oct 2026). 0.46 put the Mac app in a frame: a bar
+ * across the top with the window buttons, the arrows, the sidebar toggle
+ * and the right-panel toggle, and the sidebar and panes in rounded cards
+ * under it, with a margin round the edge. bb sizes that bar from the same
+ * variable as the pane headers, so the 6rem above doubled it too. This puts
+ * back the 0.45 layout: no frame or cards, the sidebar and panes run to the
+ * top of the window, the sidebar toggle sits over the top-left corner, the
+ * arrows sit at the right of the sidebar's top row, and the right-panel
+ * toggle sits in the top-right corner with the pane under it keeping room
+ * for it. The one new thing kept is bb's icon rail down the left. bb only
+ * marks the layout data-framed in the desktop app, so the browser is
+ * unchanged. To undo, delete this block and re-run `bb theme set sandbar`.
+ */
+[data-testid="app-layout-root"][data-framed] {
+  --bb-window-frame-top: 0px;
+  --bb-window-frame-lip: 0px;
+  padding: 0;
+  background: var(--sidebar);
+
+  [data-sidebar="collapsible-body"] {
+    border: 0;
+    border-radius: 0;
+    clip-path: inset(0 -6px 0 0);
+  }
+
+  > [data-sidebar="inset"] {
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+  }
+
+  /* The rail's icons start below the top row, as they do in the browser. */
+  [data-testid="app-nav-rail"] {
+    padding-top: var(--bb-app-chrome-row-height);
+  }
+
+  [data-testid="app-sidebar-top-reserve-row"] {
+    anchor-name: --bb-sidebar-top;
+  }
+
+  /*
+   * The bar only holds its buttons now. Clicks go through it everywhere
+   * else, and it isn't a window drag area, so the pane headers under it
+   * still work in the Mac app.
+   */
+  > [data-testid="app-window-title-bar"] {
+    right: auto;
+    pointer-events: none;
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+
+    > * {
+      pointer-events: auto;
+    }
+
+    /* The arrows, at the right of the sidebar's top row. */
+    > :first-child {
+      position: fixed;
+      position-anchor: --bb-sidebar-top;
+      top: anchor(top);
+      height: anchor-size(height);
+      right: calc(anchor(right) + 0.5rem);
+    }
+
+    /* The right-panel toggle, level with the pane header's buttons. */
+    > :has(> [data-testid="window-right-panel-toggle"]) {
+      position: fixed;
+      top: calc(var(--bb-app-chrome-row-height) / 2 - 12px);
+      right: 1rem;
+      transform: none;
+    }
+  }
+
+  /* With the sidebar hidden, the arrows go with it, as they did in 0.45. */
+  > [data-collapsible="rail"] ~ [data-testid="app-window-title-bar"] > :first-child {
+    display: none;
+  }
+
+  /*
+   * The pane in the top-right corner keeps room for the right-panel toggle.
+   * A thread on its own sits in a different panel, so it gets the first rule.
+   */
+  [data-panel-id="thread-detail-timeline-panel"] > [data-split-pane-id] header [data-testid="app-page-header-content-row"] {
+    padding-right: 2rem;
+  }
+
+  [data-panel-id="split-workspace-main-panel"] > * > [data-split-resize-grid-root] {
+    &.flex-row > :last-child,
+    &.flex-col > :first-child,
+    &.flex-row > :last-child > [data-split-resize-grid-root].flex-col > :first-child,
+    &.flex-col > :first-child > [data-split-resize-grid-root].flex-row > :last-child {
+      > [data-split-pane-id] > :first-child > header [data-testid="app-page-header-content-row"] {
+        padding-right: 2rem;
+      }
+    }
+  }
+
+  /*
+   * In a window that isn't full screen, bb moves the toggle 84px right to
+   * clear the window buttons. The sidebar's top row makes room for it, and
+   * so does the top-left pane while the sidebar is hidden.
+   */
+  > [data-collapsible]:has(~ [data-testid="app-window-title-bar"][class~="pl-[84px]"]) [data-testid="nav-rail-header"] {
+    padding-left: 3.75rem;
+  }
+
+  > [data-collapsible="rail"] ~ [data-sidebar="inset"]:has(~ [data-testid="app-window-title-bar"][class~="pl-[84px]"]) {
+    [data-panel-id="thread-detail-timeline-panel"] > [data-split-pane-id] header [data-testid="app-page-header-content-row"] {
+      padding-left: 3.25rem;
+    }
+
+    [data-panel-id="split-workspace-main-panel"] > * > [data-split-resize-grid-root] {
+      &.flex-row > :first-child,
+      &.flex-col > :first-child,
+      &.flex-row > :first-child > [data-split-resize-grid-root].flex-col > :first-child,
+      &.flex-col > :first-child > [data-split-resize-grid-root].flex-row > :first-child {
+        > [data-split-pane-id] > :first-child > header [data-testid="app-page-header-content-row"] {
+          padding-left: 3.25rem;
+        }
+      }
+    }
+  }
+
+  /* "New thread" stops short of the arrows, so they don't sit on top of it. */
+  [data-testid="nav-rail-header"] {
+    padding-right: 4.25rem;
+  }
+}
+
+/*
+ * The rail darker (12 Oct 2026), so it stands apart from the thread list
+ * and the pane headers next to it. In light mode it's mostly the sidebar's
+ * border colour with a little of the sidebar mint; in dark mode, the sidebar
+ * navy with some black. Lower the percentage to go darker still. To undo,
+ * delete this block and re-run `bb theme set sandbar`.
+ */
+[data-testid="app-nav-rail"] {
+  background: color-mix(in oklab, var(--sidebar) 25%, var(--sidebar-border));
+}
+
+.dark [data-testid="app-nav-rail"] {
+  background: color-mix(in oklab, var(--sidebar) 75%, black);
+}
+
+/*
  * Pane attention (6 Oct 2026). The Pane Attention plugin
- * (~/bb-plugins/bb-plugin-pane-attention) sets data-pane-attention on a
+ * (plugins/pane-attention in github.com/liamyb/bb-plugins) sets data-pane-attention on a
  * split pane that isn't focused: "done" when its thread finished a turn
  * while you were in another pane, "needs-you" when it's waiting on you or
  * the turn failed. Focusing the pane clears it. Done is the teal of the
@@ -208,62 +352,24 @@
 }
 
 /*
- * Usage ring by the sidebar toggle (7 Oct 2026). With the sidebar hidden,
- * the Usage Meter plugin's ring comes out of the sidebar footer and sits
- * just above the toggle, a little smaller, with the same hover and click
- * popup. The toggle stays where it is in both states, so it's always in
- * the same place to bring the sidebar back. bb only slides the hidden
- * sidebar off screen, so the ring's button is still there to move. While
- * the ring is out:
- * - the hidden sidebar's layer is lifted to the toggle's level, above the
- *   pane headers;
- * - the toggle's column lets clicks through to the ring, and in the Mac
- *   app it stops being a window drag area, or a click on the ring would
- *   drag the window instead;
- * - bb's own "Usage limits" tooltip is hidden, because it would open over
- *   the toggle and the popup already says it.
- * In a Mac window that isn't full screen, bb moves the toggle 84px right to
- * clear the window buttons, and the ring follows it. The rules hang off the
- * hidden sidebar rather than a :has() on the app's root: the root version
- * made the browser restyle the whole window on every pane switch, about
- * 30ms each time on the laptop (measured 7 Oct). To undo, delete this block
- * and re-run `bb theme set sandbar`. Removing Usage Meter turns it off too.
+ * Usage in the rail (12 Oct 2026). With the rail-rings patch
+ * (patches/usage-meter-rail-rings.patch in github.com/liamyb/bb-plugins),
+ * the Usage Meter plugin draws its rings on the Usage icon in bb's rail,
+ * which stays on screen when the sidebar is hidden. Hovering the icon opens
+ * the popup, and clicking it opens the Usage page. While the rail icon has
+ * the rings, the sidebar footer's own Usage button is hidden, and so is the
+ * rail's "Usage" tooltip, which would open beside the popup. Take the icon
+ * off the rail (right-click it, or Customize rail) and the rings go back to
+ * the footer. Without the patch the rings stay on the footer button and this
+ * block does nothing. It replaces the 7 Oct block that moved the footer ring
+ * above the sidebar toggle. To undo, delete this block and re-run
+ * `bb theme set sandbar`.
  */
-[data-testid="app-layout-root"] > [data-state="collapsed"][data-collapsible="offcanvas"] {
-  > [data-sidebar="panel"]:has([data-testid="plugin-sidebar-footer-action-usage-meter-usage"]) {
-    z-index: 44;
-  }
-
-  /*
-   * The toggle is 28px and centred in the top bar, so it starts 34px down.
-   * The ring is 26px, centred over it, and starts 7px from the top: about
-   * as far from the window's edge as from the toggle's icon.
-   */
-  [data-testid="plugin-sidebar-footer-action-usage-meter-usage"] {
-    position: fixed !important;
-    top: calc(var(--bb-app-chrome-row-height) / 2 - 41px);
-    left: 13px;
-    visibility: visible;
-    scale: 0.8125;
-    transform-origin: top left;
-  }
-
-  &:has(~ [data-testid="app-desktop-sidebar-trigger"][class~="left-[84px]"]) [data-testid="plugin-sidebar-footer-action-usage-meter-usage"] {
-    left: 85px;
-  }
-
-  &:has([data-testid="plugin-sidebar-footer-action-usage-meter-usage"]) ~ :is([data-testid="app-sidebar-trigger-overlay"], [data-testid="app-desktop-sidebar-trigger"]) {
-    pointer-events: none;
-    app-region: no-drag;
-    -webkit-app-region: no-drag;
-
-    > button {
-      pointer-events: auto;
-    }
-  }
+[data-sidebar="panel"]:has([data-nav-rail-item="usage-meter/usage"] [data-usage-meter="rings"]) li:has(> [data-testid="plugin-sidebar-footer-action-usage-meter-usage"]) {
+  display: none;
 }
 
-body:has([data-state="collapsed"][data-collapsible="offcanvas"] [data-testid="plugin-sidebar-footer-action-usage-meter-usage"]:is([data-state="delayed-open"], [data-state="instant-open"])) > [data-radix-popper-content-wrapper]:has(> :is([data-state="delayed-open"], [data-state="instant-open"])) {
+body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delayed-open"], [data-state="instant-open"]) > [data-usage-meter="rings"]) > [data-radix-popper-content-wrapper]:has(> :is([data-state="delayed-open"], [data-state="instant-open"])) {
   display: none;
 }
 
@@ -281,7 +387,7 @@ body:has([data-state="collapsed"][data-collapsible="offcanvas"] [data-testid="pl
  * blades: the pane you open and the pane you leave slide as one solid sheet
  * with the strips between them, at full width, so no text re-wraps on the
  * way. The Pane Attention plugin drives the motion
- * (~/bb-plugins/bb-plugin-pane-attention, src/blades.ts) and the rules
+ * (plugins/pane-attention/src/blades.ts in github.com/liamyb/bb-plugins) and the rules
  * marked data-blade below draw it. Without the plugin the strips ease
  * between widths instead, the way they did on 6 Oct.
  *
