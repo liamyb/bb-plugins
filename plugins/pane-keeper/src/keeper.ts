@@ -31,9 +31,12 @@ const COMPACT_QUERY = "(max-width: 767px)";
 // new window starts clean.
 const MEMORY_KEY = "bb-plugin-pane-keeper:v1";
 
-export interface ThreadActions {
-  open(threadId: string, options?: { split?: boolean }): void;
-  openNewThread(options?: { projectId?: string; focusPrompt?: boolean }): void;
+/** The parts of the SDK's `useBbNavigate()` that Pane Keeper uses. */
+export interface Navigate {
+  /** `split: true` is bb's split-open: right of the focused pane, or focus it if open. */
+  toThread(threadId: string, options?: { split?: boolean }): void;
+  /** The New thread screen. */
+  toCompose(options?: { projectId?: string; focusPrompt?: boolean }): void;
 }
 
 export interface Settings {
@@ -50,7 +53,7 @@ export const live: {
   panes: readonly Pane[] | null;
   memory: FocusMemory;
   threads: ReadonlyMap<string, ThreadInfo>;
-  threadActions: ThreadActions | null;
+  navigate: Navigate | null;
   settings: Settings;
   /** The overlay's hidden link to New thread. See `openNewThreadInSplit`. */
   splitLink: HTMLAnchorElement | null;
@@ -58,7 +61,7 @@ export const live: {
   panes: null,
   memory: readMemory(),
   threads: new Map(),
-  threadActions: null,
+  navigate: null,
   settings: { notificationClicks: true, atPaneLimit: "replace-oldest" },
   splitLink: null,
 };
@@ -192,13 +195,13 @@ function sayNoSplit(): void {
  * already open. Otherwise it's bb's own New thread.
  */
 export function newThreadBeside(projectId: string | null): void {
-  const threadActions = live.threadActions;
-  if (threadActions === null) return;
+  const navigate = live.navigate;
+  if (navigate === null) return;
   // bb's own New thread does exactly this: select the current project, then
   // open the compose screen with its prompt focused. When a New thread pane
   // is open, bb focuses that pane rather than replacing anything.
   const openPrompt = () =>
-    threadActions.openNewThread({
+    navigate.toCompose({
       ...(projectId === null ? {} : { projectId }),
       focusPrompt: true,
     });
@@ -213,7 +216,7 @@ export function newThreadBeside(projectId: string | null): void {
   }
   // At the limit bb replaces the focused pane, so focus the one to lose first.
   if (decision.kind === "replace") {
-    threadActions.open(decision.pane.threadId, { split: true });
+    navigate.toThread(decision.pane.threadId, { split: true });
   }
   if (!openNewThreadInSplit()) {
     sayNoSplit();
@@ -239,8 +242,8 @@ export function onOpenThreadEvent(event: Event): void {
     typeof (detail as { threadId?: unknown }).threadId === "string"
       ? (detail as { threadId: string }).threadId
       : null;
-  const threadActions = live.threadActions;
-  if (threadId === null || threadActions === null) return;
+  const navigate = live.navigate;
+  if (threadId === null || navigate === null) return;
   if (!live.threads.has(threadId)) return;
   const alreadyOpen = live.panes?.some((pane) => pane.threadId === threadId) ?? false;
   const decision = plan(alreadyOpen);
@@ -251,8 +254,8 @@ export function onOpenThreadEvent(event: Event): void {
     return;
   }
   if (decision.kind === "replace") {
-    threadActions.open(decision.pane.threadId, { split: true });
+    navigate.toThread(decision.pane.threadId, { split: true });
   }
-  threadActions.open(threadId, { split: true });
+  navigate.toThread(threadId, { split: true });
   if (decision.kind === "replace") sayReplaced(decision.pane);
 }

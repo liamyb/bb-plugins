@@ -14,7 +14,7 @@ always has.
   selects the current project and focuses the prompt, exactly as bb's New thread does. If a New
   thread pane is already open, bb jumps to it.
 - **Notification clicks** from Notifications Pro (OS toasts and the in-app centre) open the
-  thread the way a sidebar click does (`actions.open(id, { split: true })`). This needs a small
+  thread with bb's split rules (`useBbNavigate().toThread(id, { split: true })`). This needs a small
   hook in Notifications Pro, which fires `pane-keeper:open-thread` on `window` before it
   navigates. The patch is in [`patches/`](../../patches/) at the root of this repo. Pane Keeper claims the event with `preventDefault()` when it has opened the thread.
 - **At 8 panes**, bb's limit, bb would replace the pane you're in. Pane Keeper swaps out the pane
@@ -40,7 +40,7 @@ one-off toast saying so.
 ## Setup
 
 - Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin pane-keeper --tag-prefix pane-keeper/`
-  (bb builds it, no npm). Needs bb 0.45 or later.
+  (bb builds it, no npm). Needs bb 0.46 or later, for the SDK's `useBbNavigate()` split rules.
 - Shortcuts: `bb settings keyboard set thread.new disabled`. bb's New thread lets go of Cmd+N and
   Cmd+Shift+O, and Pane Keeper's two commands pick them up by themselves. While bb holds them,
   Pane Keeper's defaults stay unbound (bb doesn't let a plugin default take an occupied key).

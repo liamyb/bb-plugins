@@ -10,9 +10,9 @@
 import { useEffect } from "react";
 import {
   definePluginApp,
+  useBbNavigate,
   useSettings,
   useSidebarSplitLayout,
-  experimental_useSidebarThreadActions as useSidebarThreadActions,
   experimental_useSidebarThreads as useSidebarThreads,
 } from "@get-bb/plugin-sdk/app";
 import { recordFocus, type Pane } from "./src/placement";
@@ -40,12 +40,12 @@ const BUSY_RUNTIME = new Set([
 function KeeperState() {
   const layout = useSidebarSplitLayout();
   const { threads } = useSidebarThreads();
-  const threadActions = useSidebarThreadActions();
+  const navigate = useBbNavigate();
   const { values } = useSettings();
 
   useEffect(() => {
-    live.threadActions = threadActions;
-  }, [threadActions]);
+    live.navigate = navigate;
+  }, [navigate]);
 
   useEffect(() => {
     live.threads = new Map(
@@ -87,7 +87,7 @@ function KeeperState() {
     window.addEventListener(OPEN_THREAD_EVENT, onOpenThreadEvent);
     return () => {
       window.removeEventListener(OPEN_THREAD_EVENT, onOpenThreadEvent);
-      live.threadActions = null;
+      live.navigate = null;
     };
   }, []);
 

@@ -11,7 +11,7 @@ plain-English asks, and it's what I run every day.
 | [Message Times](plugins/message-times/) | Shows the time you sent each of your messages beside its bubble, with the full date on hover |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
 
-Built on bb 0.44 and running on 0.45, on a Mac.
+Built on bb 0.44 and running on 0.46, on a Mac.
 
 ## Install
 
@@ -36,8 +36,8 @@ bb settings keyboard set thread.new disabled
 ```
 
 It frees Cmd+N and Cmd+Shift+O from bb's own New thread so Pane Keeper can pick them up. The
-[Pane Keeper README](plugins/pane-keeper/) explains it, and how to undo it. Pane Keeper 0.1.1 needs
-bb 0.45 or later. 0.1.0 used a sidebar header that bb 0.46 removed, so on 0.46 it doesn't load at
+[Pane Keeper README](plugins/pane-keeper/) explains it, and how to undo it. Pane Keeper 0.1.2 needs
+bb 0.46 or later. 0.1.0 used a sidebar header that bb 0.46 removed, so on 0.46 it doesn't load at
 all.
 
 For notification clicks to open beside you as well, Notifications Pro needs a small hook. See
@@ -57,11 +57,17 @@ below it is layout, in blocks that each start with a comment saying what they do
 them:
 
 - **Taller top bar.** Double bb's height, so pane titles wrap onto two lines instead of cutting
-  off, and the thread buttons stack.
+  off.
+- **No frame.** bb 0.46 put the Mac app in a frame, with a bar across the top and the sidebar and
+  panes in rounded cards. This puts back the 0.45 layout, with the sidebar and panes running to the
+  top of the window, and keeps the new icon rail down the left. It only changes the desktop app.
+- **The rail darker.** The icon rail is a shade darker than the sidebar, so it stands apart from
+  the thread list.
 - **Pane attention.** The teal and amber bars, tints and dots for Pane Attention.
-- **Usage ring by the sidebar toggle.** With the sidebar hidden, the
-  [Usage Meter](https://github.com/xMinor-1/bb-plugins) ring moves up beside the toggle.
-  Harmless without Usage Meter.
+- **Usage in the rail.** With the rail-rings patch below,
+  [Usage Meter](https://github.com/xMinor-1/bb-plugins) draws its rings on the rail's Usage icon,
+  which stays on screen when the sidebar is hidden, and this hides the footer's own Usage button.
+  Without the patch it does nothing.
 - **Sliding panes.** Below 1900px wide, with three or more panes in a row, every pane but the
   focused one folds into a narrow strip with its title running down it. The blade slide between
   them is in the same block, with its speed in `--bb-blade-duration` (360ms, `0ms` turns it off).
@@ -77,6 +83,13 @@ a thread notification fires a cancelable `pane-keeper:open-thread` event first, 
 if nothing claims it, so without Pane Keeper nothing changes. It's made against Notifications Pro's
 main at `7189cee` (30 Sep 2026), and its 57 tests pass with it.
 
+[`patches/usage-meter-rail-rings.patch`](patches/usage-meter-rail-rings.patch) moves
+[Usage Meter](https://github.com/xMinor-1/bb-plugins)'s rings onto its Usage icon in bb 0.46's rail
+whenever that icon is on the rail, and back to the sidebar footer button when it isn't. Hovering
+the rail icon opens the popup, and clicking it opens the Usage page, as the other rail icons do.
+It's made against Usage Meter's `usage-meter/v0.2.5` tag, so apply it to a clone of that tag with
+`git apply` and install your copy as a local path.
+
 ## The rest of my setup
 
 These are other people's, and they're what the plugins above were built alongside:
@@ -87,7 +100,8 @@ These are other people's, and they're what the plugins above were built alongsid
   [File Explorer](https://github.com/kr3t3n/bb-plugin-file-explorer)
 - [Thread Namer](https://github.com/suiramdev/bb-plugin-thread-namer), which titles threads
   automatically (I run it on Claude Haiku)
-- [Usage Meter](https://github.com/xMinor-1/bb-plugins), the Claude usage ring
+- [Usage Meter](https://github.com/xMinor-1/bb-plugins), the Claude usage rings, with the
+  rail-rings patch above
 - [Aura](https://github.com/MateoCerquetella/bb-plugins), for a wallpaper behind the threads
 
 ## Licence
