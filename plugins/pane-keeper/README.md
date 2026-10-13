@@ -9,10 +9,10 @@ always has.
 
 ## What it does
 
-- **Cmd+N and Cmd+Shift+O** run "Pane Keeper: New thread beside this pane". It uses the sidebar
-  navigation's own "open New thread in a split" action, then selects the current project and
-  focuses the prompt, exactly as bb's New thread does. If a New thread pane is already open, bb
-  jumps to it.
+- **Cmd+N and Cmd+Shift+O** run "Pane Keeper: New thread beside this pane". It uses bb's own
+  "open New thread in a split", the one behind a Cmd+click on the sidebar's New thread button, then
+  selects the current project and focuses the prompt, exactly as bb's New thread does. If a New
+  thread pane is already open, bb jumps to it.
 - **Notification clicks** from Notifications Pro (OS toasts and the in-app centre) open the
   thread the way a sidebar click does (`actions.open(id, { split: true })`). This needs a small
   hook in Notifications Pro, which fires `pane-keeper:open-thread` on `window` before it
@@ -23,24 +23,24 @@ always has.
   before busy ones. If nothing qualifies it opens nothing and says "8 panes open, close one
   first." Set `atPaneLimit` to `notice` to always do that instead.
 
-## Why the header slot
+## How it opens the split
 
-The only SDK route to a blank New thread pane in a split is the sidebar navigation's
-`activate("__bb__/new-thread", { openInSplit: true })`, and those actions only work from a
-component mounted inside the sidebar. An app overlay sits outside it and gets no-op actions.
-So Pane Keeper registers an `experimental_sidebarHeader` that renders nothing and only hands
-the actions to the commands. It has to be picked as the header:
-`bb settings ui set sidebar.headerProvider pane-keeper/bridge`. It stays mounted while the
-sidebar is hidden (bb hides it offcanvas, it doesn't unmount it).
+The SDK has no call that opens a blank New thread pane in a split. Up to 0.1.0 Pane Keeper borrowed
+the sidebar navigation's `activate("__bb__/new-thread", { openInSplit: true })` through a hidden
+sidebar header, and bb 0.46 removed both the header slot and that hook, so 0.1.0 doesn't load on
+0.46.
 
-Without the header picked, Cmd+N falls back to bb's own New thread and shows a one-off toast
-saying why.
+Since 0.1.1 it uses bb's link handling instead. bb wraps every plugin's UI in a click handler that
+treats a Cmd- or Ctrl-click on an in-app link as "open in split", and `/` is the New thread route.
+So the overlay renders a hidden link to `/`, and the command clicks it with Cmd held. That reaches
+the same split-open as a Cmd+click on the sidebar's New thread button, whether the sidebar is shown
+or hidden. If bb ever stops taking that click, Cmd+N falls back to bb's own New thread and shows a
+one-off toast saying so.
 
 ## Setup
 
 - Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin pane-keeper --tag-prefix pane-keeper/`
-  (bb builds it, no npm).
-- Header: `bb settings ui set sidebar.headerProvider pane-keeper/bridge`.
+  (bb builds it, no npm). Needs bb 0.45 or later.
 - Shortcuts: `bb settings keyboard set thread.new disabled`. bb's New thread lets go of Cmd+N and
   Cmd+Shift+O, and Pane Keeper's two commands pick them up by themselves. While bb holds them,
   Pane Keeper's defaults stay unbound (bb doesn't let a plugin default take an occupied key).
@@ -54,7 +54,7 @@ saying why.
   `bb plugin config pane-keeper set notificationClicks false`.
 - At 8 panes, open nothing rather than swap: `bb plugin config pane-keeper set atPaneLimit notice`.
 - All of it: `bb plugin disable pane-keeper`, then `bb settings keyboard reset thread.new`
-  (otherwise Cmd+N does nothing) and `bb settings ui reset sidebar.headerProvider`.
+  (otherwise Cmd+N does nothing).
 
 ## Tests
 

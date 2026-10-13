@@ -1,12 +1,12 @@
 {
   "name": "bb-plugin-pane-keeper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Cmd+N and notification clicks open beside the pane you're in, instead of over it.",
   "license": "MIT",
   "engines": {
-    "bb": ">=0.44",
+    "bb": ">=0.45",
     "bbPluginSdk": ">=0.5.29"
   },
   "bb": {

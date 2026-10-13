@@ -29,17 +29,16 @@ bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin p
 does the drawing. Use the Sandbar theme below, or copy its "Pane attention" and "Sliding panes"
 blocks into your own.
 
-**Pane Keeper needs two settings** before Cmd+N is its own:
+**Pane Keeper needs one setting** before Cmd+N is its own:
 
 ```sh
-bb settings ui set sidebar.headerProvider pane-keeper/bridge
 bb settings keyboard set thread.new disabled
 ```
 
-The first gives it a hidden sidebar header, which is the only place bb lets a plugin open a blank
-New thread pane in a split. The second frees Cmd+N and Cmd+Shift+O from bb's own New thread so
-Pane Keeper can pick them up. The [Pane Keeper README](plugins/pane-keeper/) explains both, and
-how to undo them.
+It frees Cmd+N and Cmd+Shift+O from bb's own New thread so Pane Keeper can pick them up. The
+[Pane Keeper README](plugins/pane-keeper/) explains it, and how to undo it. Pane Keeper 0.1.1 needs
+bb 0.45 or later. 0.1.0 used a sidebar header that bb 0.46 removed, so on 0.46 it doesn't load at
+all.
 
 For notification clicks to open beside you as well, Notifications Pro needs a small hook. See
 [Patches](#patches) below.
@@ -77,16 +76,6 @@ the hook to [Notifications Pro](https://github.com/kr3t3n/bb-plugin-notification
 a thread notification fires a cancelable `pane-keeper:open-thread` event first, and only navigates
 if nothing claims it, so without Pane Keeper nothing changes. It's made against Notifications Pro's
 main at `7189cee` (30 Sep 2026), and its 57 tests pass with it.
-
-## Known quirk
-
-If bb restarts Pane Keeper (safe mode on and off, a disable and enable), Cmd+N can go dead because
-the window doesn't remount its hidden header. Setting the header afresh fixes it:
-
-```sh
-bb settings ui set sidebar.headerProvider __builtin__
-bb settings ui set sidebar.headerProvider pane-keeper/bridge
-```
 
 ## The rest of my setup
 

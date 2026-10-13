@@ -1,5 +1,5 @@
 // The parts of Pane Keeper that act. Commands and DOM events arrive outside
-// React, so the components in app.tsx keep `live` up to date and these
+// React, so the overlay in app.tsx keeps `live` up to date and these
 // functions read it.
 import { toast } from "sonner";
 import {
@@ -15,8 +15,8 @@ import {
   type ThreadPane,
 } from "./placement";
 
-/** bb's id for the New thread item in its sidebar navigation. */
-export const NEW_THREAD_ITEM = "__bb__/new-thread";
+/** bb's route for the New thread screen. */
+export const NEW_THREAD_ROUTE = "/";
 
 /**
  * Fired on `window` by Liam's Notifications Pro patch before it opens a
@@ -36,10 +36,6 @@ export interface ThreadActions {
   openNewThread(options?: { projectId?: string; focusPrompt?: boolean }): void;
 }
 
-export interface NavigationActions {
-  activate(id: string, options: { openInSplit: boolean }): void;
-}
-
 export interface Settings {
   notificationClicks: boolean;
   atPaneLimit: LimitMode;
@@ -56,31 +52,16 @@ export const live: {
   threads: ReadonlyMap<string, ThreadInfo>;
   threadActions: ThreadActions | null;
   settings: Settings;
+  /** The overlay's hidden link to New thread. See `openNewThreadInSplit`. */
+  splitLink: HTMLAnchorElement | null;
 } = {
   panes: null,
   memory: readMemory(),
   threads: new Map(),
   threadActions: null,
   settings: { notificationClicks: true, atPaneLimit: "replace-oldest" },
+  splitLink: null,
 };
-
-// The sidebar navigation's actions only work from inside the sidebar, so the
-// header bridge in app.tsx registers them here while it's mounted.
-const bridges = new Map<object, NavigationActions>();
-
-export function registerBridge(actions: NavigationActions): () => void {
-  const token = {};
-  bridges.set(token, actions);
-  return () => {
-    bridges.delete(token);
-  };
-}
-
-function navigationActions(): NavigationActions | null {
-  let latest: NavigationActions | null = null;
-  for (const actions of bridges.values()) latest = actions;
-  return latest;
-}
 
 function readMemory(): FocusMemory {
   try {
@@ -141,6 +122,46 @@ function plan(alreadyOpen: boolean): Plan {
   });
 }
 
+/**
+ * bb's split-open for New thread. The SDK has had no call for it since bb
+ * 0.46, but bb wraps every plugin's UI in a click handler that treats a Cmd-
+ * or Ctrl-click on an in-app link as "open in split", which is the same
+ * split-open the sidebar's New thread button uses, and "/" is the New thread
+ * route. So the overlay renders a hidden link to "/" and this clicks it with
+ * Cmd held. bb then adds a pane to the right of the focused one, focuses a
+ * New thread pane that's already open, or at 8 panes replaces the focused
+ * one.
+ *
+ * Returns false when bb didn't take the click, and stops the browser
+ * following the link in that case.
+ */
+function openNewThreadInSplit(): boolean {
+  const link = live.splitLink;
+  if (link === null || !link.isConnected) return false;
+  let taken = false;
+  // React handles the click at bb's root element, so a listener on `window`
+  // sees it after bb has.
+  const settle = (event: Event) => {
+    if (event.target !== link) return;
+    taken = event.defaultPrevented;
+    event.preventDefault();
+  };
+  window.addEventListener("click", settle);
+  try {
+    link.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        metaKey: true,
+      }),
+    );
+  } finally {
+    window.removeEventListener("click", settle);
+  }
+  return taken;
+}
+
 function titleOf(threadId: string): string {
   return live.threads.get(threadId)?.title ?? "that thread";
 }
@@ -155,13 +176,13 @@ function sayFull(): void {
   toast("8 panes open, close one first.");
 }
 
-let warnedNoBridge = false;
+let warnedNoSplit = false;
 
-function sayNoBridge(): void {
-  if (warnedNoBridge) return;
-  warnedNoBridge = true;
+function sayNoSplit(): void {
+  if (warnedNoSplit) return;
+  warnedNoSplit = true;
   toast(
-    "Pane Keeper can't open New thread beside this pane until it's picked under Settings → Appearance → Header, so this one opened over it.",
+    "Pane Keeper couldn't open New thread beside this pane, so it opened over it. bb may have changed how it opens splits.",
   );
 }
 
@@ -186,12 +207,6 @@ export function newThreadBeside(projectId: string | null): void {
     openPrompt();
     return;
   }
-  const navigation = navigationActions();
-  if (navigation === null) {
-    sayNoBridge();
-    openPrompt();
-    return;
-  }
   if (decision.kind === "blocked") {
     sayFull();
     return;
@@ -200,7 +215,11 @@ export function newThreadBeside(projectId: string | null): void {
   if (decision.kind === "replace") {
     threadActions.open(decision.pane.threadId, { split: true });
   }
-  navigation.activate(NEW_THREAD_ITEM, { openInSplit: true });
+  if (!openNewThreadInSplit()) {
+    sayNoSplit();
+    openPrompt();
+    return;
+  }
   openPrompt();
   if (decision.kind === "replace") sayReplaced(decision.pane);
 }

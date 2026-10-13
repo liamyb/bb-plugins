@@ -3,29 +3,26 @@
 //
 // - Two commands take Cmd+N and Cmd+Shift+O once bb's own New thread lets go
 //   of them (`bb settings keyboard set thread.new disabled`).
-// - A header component that draws nothing sits inside the sidebar, because
-//   the sidebar navigation's "open New thread in a split" action only works
-//   from in there. It has to be picked under Settings → Appearance → Header.
-// - An overlay keeps the layout, threads and focus history current, and
-//   answers Notifications Pro's open-thread event.
+// - An overlay keeps the layout, threads and focus history current, answers
+//   Notifications Pro's open-thread event, and carries the hidden New thread
+//   link the commands click to get bb's split-open (see `openNewThreadInSplit`
+//   in src/keeper.ts).
 import { useEffect } from "react";
 import {
   definePluginApp,
   useSettings,
   useSidebarSplitLayout,
-  experimental_useSidebarNavigation as useSidebarNavigation,
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   experimental_useSidebarThreads as useSidebarThreads,
 } from "@get-bb/plugin-sdk/app";
 import { recordFocus, type Pane } from "./src/placement";
 import {
-  NEW_THREAD_ITEM,
+  NEW_THREAD_ROUTE,
   OPEN_THREAD_EVENT,
   live,
   newThreadBeside,
   onOpenThreadEvent,
   parseSettings,
-  registerBridge,
   saveMemory,
 } from "./src/keeper";
 
@@ -94,35 +91,25 @@ function KeeperState() {
     };
   }, []);
 
-  return null;
-}
-
-// Draws nothing. It's only here to hand the navigation's actions to the
-// commands, which run outside React.
-function NavigationBridge() {
-  const { items, actions } = useSidebarNavigation();
-  const item = items.find((entry) => entry.id === NEW_THREAD_ITEM);
-  const usable = item !== undefined && !item.isDisabled && !item.isLoading;
-
-  useEffect(() => {
-    if (!usable) return;
-    return registerBridge(actions);
-  }, [actions, usable]);
-
-  return null;
+  // Never shown and never focusable. It has to sit inside the plugin's own
+  // UI, because that's where bb's link handling applies.
+  return (
+    <a
+      href={NEW_THREAD_ROUTE}
+      hidden
+      aria-hidden="true"
+      tabIndex={-1}
+      ref={(element) => {
+        live.splitLink = element;
+      }}
+    />
+  );
 }
 
 export default definePluginApp((app) => {
   app.slots.experimental_appOverlay({
     id: "pane-keeper",
     component: KeeperState,
-  });
-  app.slots.experimental_sidebarHeader({
-    id: "bridge",
-    title: "Pane Keeper",
-    description:
-      "Draws nothing. Lets Cmd+N open New thread beside the focused pane.",
-    component: NavigationBridge,
   });
   app.commands.register({
     id: "new-thread",
