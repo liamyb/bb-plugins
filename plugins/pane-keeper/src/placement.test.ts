@@ -39,6 +39,28 @@ test("compact layout and a single pane are left to bb", () => {
   });
 });
 
+test("a draft splits a single pane, unless that pane is already New thread", () => {
+  const input = {
+    alreadyOpen: false,
+    mode: "replace-oldest",
+    pick: noPick,
+    splitSinglePane: true,
+  } as const;
+  assert.deepEqual(planOpen({ ...input, compact: false, panes: null }), {
+    kind: "split",
+  });
+  assert.deepEqual(planOpen({ ...input, compact: false, panes: panes(1, 1) }), {
+    kind: "split",
+  });
+  assert.deepEqual(
+    planOpen({ ...input, alreadyOpen: true, compact: false, panes: null }),
+    { kind: "default" },
+  );
+  assert.deepEqual(planOpen({ ...input, compact: true, panes: null }), {
+    kind: "default",
+  });
+});
+
 test("below the limit it uses bb's split-open", () => {
   const plan = planOpen({
     compact: false,

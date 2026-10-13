@@ -35,8 +35,12 @@ const MEMORY_KEY = "bb-plugin-pane-keeper:v1";
 export interface Navigate {
   /** `split: true` is bb's split-open: right of the focused pane, or focus it if open. */
   toThread(threadId: string, options?: { split?: boolean }): void;
-  /** The New thread screen. */
-  toCompose(options?: { projectId?: string; focusPrompt?: boolean }): void;
+  /** The New thread screen. `environmentId` makes New thread reuse that environment. */
+  toCompose(options?: {
+    projectId?: string;
+    environmentId?: string;
+    focusPrompt?: boolean;
+  }): void;
 }
 
 export interface Settings {
@@ -106,18 +110,21 @@ function paneFacts(pane: ThreadPane): PaneFacts {
 }
 
 // The layout reports a New thread pane only as a pane with no thread, which a
-// plugin page is too. bb gives the New thread prompt this id.
+// plugin page is too. bb gives the New thread prompt this id. With nothing
+// split, the only pane is the one showing it.
 function newThreadPaneOpen(): boolean {
   const prompt = document.getElementById("root-compose-prompt");
-  return prompt?.closest("[data-split-pane-id]") != null;
+  if (prompt === null) return false;
+  return live.panes === null || prompt.closest("[data-split-pane-id]") != null;
 }
 
-function plan(alreadyOpen: boolean): Plan {
+function plan(alreadyOpen: boolean, splitSinglePane: boolean): Plan {
   return planOpen({
     compact: isCompact(),
     panes: live.panes,
     alreadyOpen,
     mode: live.settings.atPaneLimit,
+    splitSinglePane,
     pick: () =>
       live.panes === null
         ? null
@@ -189,31 +196,39 @@ function sayNoSplit(): void {
   );
 }
 
-/**
- * Cmd+N and Cmd+Shift+O. With a split showing, New thread opens as a pane to
- * the right of the focused one, or bb jumps to the New thread pane that's
- * already open. Otherwise it's bb's own New thread.
- */
-export function newThreadBeside(projectId: string | null): void {
+interface NewThreadOptions {
+  /** Have New thread reuse this environment, such as the project's checkout. */
+  environmentId?: string;
+  /** Open beside a single pane too. See `PlanInput.splitSinglePane`. */
+  splitSinglePane?: boolean;
+}
+
+/** Whether New thread opened: "unavailable" until the overlay has mounted. */
+export type NewThreadResult = "opened" | "blocked" | "unavailable";
+
+function openNewThread(
+  projectId: string | null,
+  options: NewThreadOptions,
+): NewThreadResult {
   const navigate = live.navigate;
-  if (navigate === null) return;
+  if (navigate === null) return "unavailable";
   // bb's own New thread does exactly this: select the current project, then
   // open the compose screen with its prompt focused. When a New thread pane
   // is open, bb focuses that pane rather than replacing anything.
   const openPrompt = () =>
     navigate.toCompose({
       ...(projectId === null ? {} : { projectId }),
+      ...(options.environmentId === undefined
+        ? {}
+        : { environmentId: options.environmentId }),
       focusPrompt: true,
     });
-  const decision = plan(newThreadPaneOpen());
+  const decision = plan(newThreadPaneOpen(), options.splitSinglePane ?? false);
   if (decision.kind === "default") {
     openPrompt();
-    return;
+    return "opened";
   }
-  if (decision.kind === "blocked") {
-    sayFull();
-    return;
-  }
+  if (decision.kind === "blocked") return "blocked";
   // At the limit bb replaces the focused pane, so focus the one to lose first.
   if (decision.kind === "replace") {
     navigate.toThread(decision.pane.threadId, { split: true });
@@ -221,10 +236,35 @@ export function newThreadBeside(projectId: string | null): void {
   if (!openNewThreadInSplit()) {
     sayNoSplit();
     openPrompt();
-    return;
+    return "opened";
   }
   openPrompt();
   if (decision.kind === "replace") sayReplaced(decision.pane);
+  return "opened";
+}
+
+/**
+ * Cmd+N and Cmd+Shift+O. With a split showing, New thread opens as a pane to
+ * the right of the focused one, or bb jumps to the New thread pane that's
+ * already open. Otherwise it's bb's own New thread.
+ */
+export function newThreadBeside(projectId: string | null): void {
+  if (openNewThread(projectId, {}) === "blocked") sayFull();
+}
+
+/**
+ * A draft from `bb pane-keeper draft`. Opens New thread the way Cmd+N does,
+ * but beside a single pane as well, and on the draft's environment. The
+ * prompt goes in once New thread's composer shows up (see app.tsx).
+ */
+export function openDraftBeside(
+  projectId: string,
+  environmentId: string | null,
+): NewThreadResult {
+  return openNewThread(projectId, {
+    ...(environmentId === null ? {} : { environmentId }),
+    splitSinglePane: true,
+  });
 }
 
 /**
@@ -246,7 +286,7 @@ export function onOpenThreadEvent(event: Event): void {
   if (threadId === null || navigate === null) return;
   if (!live.threads.has(threadId)) return;
   const alreadyOpen = live.panes?.some((pane) => pane.threadId === threadId) ?? false;
-  const decision = plan(alreadyOpen);
+  const decision = plan(alreadyOpen, false);
   if (decision.kind === "default") return;
   event.preventDefault();
   if (decision.kind === "blocked") {

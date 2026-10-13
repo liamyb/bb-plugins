@@ -6,7 +6,7 @@ plain-English asks, and it's what I run every day.
 
 | | What it does |
 |---|---|
-| [Pane Keeper](plugins/pane-keeper/) | Cmd+N and notification clicks open a new pane to the right of the one you're in, instead of replacing it. At bb's limit of 8 panes it swaps out the one you used least recently |
+| [Pane Keeper](plugins/pane-keeper/) | Cmd+N and notification clicks open a new pane to the right of the one you're in, instead of replacing it. At bb's limit of 8 panes it swaps out the one you used least recently. `bb pane-keeper draft` opens New thread beside you with a prompt typed in and not sent |
 | [Pane Attention](plugins/pane-attention/) | Marks an unfocused pane when its thread has finished (teal) or is waiting on you (amber), and plays the "blade" slide between folded panes, like the Xbox 360 dashboard |
 | [Message Times](plugins/message-times/) | Shows the time you sent each of your messages beside its bubble, with the full date on hover |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
@@ -15,12 +15,12 @@ Built on bb 0.44 and running on 0.46, on a Mac.
 
 ## Install
 
-bb builds each plugin itself, so there's no `npm install`:
+bb builds each plugin itself, and installs any dependencies, so there's no `npm install`:
 
 ```sh
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin message-times --tag-prefix message-times/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin pane-attention --tag-prefix pane-attention/
-bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin pane-keeper --tag-prefix pane-keeper/
+bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin pane-keeper --tag-prefix pane-keeper/
 ```
 
 **Message Times** works on its own, with any theme.
@@ -36,9 +36,12 @@ bb settings keyboard set thread.new disabled
 ```
 
 It frees Cmd+N and Cmd+Shift+O from bb's own New thread so Pane Keeper can pick them up. The
-[Pane Keeper README](plugins/pane-keeper/) explains it, and how to undo it. Pane Keeper 0.1.2 needs
-bb 0.46 or later. 0.1.0 used a sidebar header that bb 0.46 removed, so on 0.46 it doesn't load at
-all.
+[Pane Keeper README](plugins/pane-keeper/) explains it, and how to undo it. Pane Keeper 0.1.2 and
+later need bb 0.46 or later. 0.1.0 used a sidebar header that bb 0.46 removed, so on 0.46 it
+doesn't load at all. If you installed it with `^0.1.0`, `bb plugin update` won't move it to 0.2,
+because a caret range on 0.x stops at the next minor version, and bb won't install over a plugin
+that's already there. Run `bb plugin remove pane-keeper` and then the install line above. Removing
+it resets its two settings to their defaults.
 
 For notification clicks to open beside you as well, Notifications Pro needs a small hook. See
 [Patches](#patches) below.

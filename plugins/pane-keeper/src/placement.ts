@@ -37,7 +37,7 @@ export interface FocusMemory {
 export type LimitMode = "replace-oldest" | "notice";
 
 export type Plan =
-  /** Leave it to bb: compact layout, or a single pane. */
+  /** Leave it to bb: compact layout, or a single pane (unless `splitSinglePane`). */
   | { kind: "default" }
   /** bb's split-open: a new pane on the right, or focus the open one. */
   | { kind: "split" }
@@ -117,11 +117,24 @@ export interface PlanInput {
   mode: LimitMode;
   /** Called only at the limit. */
   pick: () => ThreadPane | null;
+  /**
+   * Open beside a single pane too, rather than over it. For a draft handed
+   * in from outside bb, which arrives while Liam is working in that pane.
+   * Cmd+N leaves it off, so a single pane gets bb's own New thread.
+   */
+  splitSinglePane?: boolean;
 }
 
 export function planOpen(input: PlanInput): Plan {
   const { compact, panes } = input;
-  if (compact || panes === null || panes.length < 2) return { kind: "default" };
+  if (compact) return { kind: "default" };
+  if (panes === null || panes.length < 2) {
+    // With one pane, something already open is that pane, so bb's own
+    // navigation just shows it.
+    return input.splitSinglePane === true && !input.alreadyOpen
+      ? { kind: "split" }
+      : { kind: "default" };
+  }
   if (input.alreadyOpen || panes.length < PANE_LIMIT) return { kind: "split" };
   if (input.mode === "notice") return { kind: "blocked" };
   const pane = input.pick();

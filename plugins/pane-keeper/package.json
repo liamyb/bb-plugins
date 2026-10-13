@@ -1,9 +1,9 @@
 {
   "name": "bb-plugin-pane-keeper",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Cmd+N and notification clicks open beside the pane you're in, instead of over it.",
+  "description": "Cmd+N, notification clicks and drafts handed in from outside bb open beside the pane you're in, instead of over it.",
   "license": "MIT",
   "engines": {
     "bb": ">=0.46",
@@ -11,18 +11,20 @@
   },
   "bb": {
     "name": "Pane Keeper",
-    "description": "With a split showing, Cmd+N and Notifications Pro clicks open a new pane to the right instead of replacing the one you're in. At 8 panes it swaps out the one you used least recently.",
+    "description": "With a split showing, Cmd+N and Notifications Pro clicks open a new pane to the right instead of replacing the one you're in. At 8 panes it swaps out the one you used least recently. `bb pane-keeper draft` opens New thread beside you with a prompt typed in and not sent.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
     "server": "./server.ts",
-    "app": "./app.tsx",
-    "skills": []
+    "app": "./app.tsx"
   },
   "scripts": {
     "build": "bb plugin build",
     "test": "node --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.37",
