@@ -25,8 +25,8 @@ single pane too.
   first." Set `atPaneLimit` to `notice` to always do that instead.
 - **`bb pane-keeper draft`** (new in 0.2.0) opens New thread beside the focused pane with a
   prompt typed in and nothing sent, so you can add to it, pick the mode and send it yourself.
-  `bb thread spawn` always sends, and bb has no other way to prefill New thread from outside the
-  app. My task list's menu bar item uses it for "Work on this in bb". See [Drafts](#drafts).
+  `bb thread spawn` always sends, and bb registers no URL scheme, so nothing outside the app
+  could prefill the app's own New thread. My task list's menu bar item uses it for "Work on this in bb". See [Drafts](#drafts).
 
 ## Drafts
 
