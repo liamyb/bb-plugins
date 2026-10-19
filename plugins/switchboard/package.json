@@ -1,0 +1,36 @@
+{
+  "name": "bb-plugin-switchboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A compact list of the chats open in your bb panes, with bb's own chat sliding open in place. Made for a small second bb window.",
+  "license": "MIT",
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.37"
+  },
+  "bb": {
+    "name": "Switchboard",
+    "description": "A page listing the chats open in your split panes, in any bb window, with a state word each (Needs you, Working, Done, Idle). Click a row and bb's chat slides open in place; a New chat button starts one on your project checkout. Sized for a 500px second window (Cmd+Shift+N), and it works in the main window too. Cmd+Shift+S opens it.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "^5.7.0"
+  }
+}

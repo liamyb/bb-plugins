@@ -1,6 +1,6 @@
 # bb plugins and the Sandbar theme
 
-Three small [bb](https://getbb.app) plugins and a theme, built for working in lots of split panes,
+Four small [bb](https://getbb.app) plugins and a theme, built for working in lots of split panes,
 mostly on a laptop screen. I'm not an engineer: all of it was written by Claude in bb threads, from
 plain-English asks, and it's what I run every day.
 
@@ -9,6 +9,7 @@ plain-English asks, and it's what I run every day.
 | [Pane Keeper](plugins/pane-keeper/) | Cmd+N, a plain click on New thread and notification clicks open a new pane to the right of the one you're in, instead of replacing it. At bb's limit of 8 panes it swaps out the one you used least recently. `bb pane-keeper draft` opens New thread beside you with a prompt typed in and not sent |
 | [Pane Attention](plugins/pane-attention/) | Marks an unfocused pane when its thread has finished (teal) or is waiting on you (amber), and plays the "blade" slide between folded panes, like the Xbox 360 dashboard |
 | [Message Times](plugins/message-times/) | Shows the time you sent each of your messages beside its bubble, with the full date on hover |
+| [Switchboard](plugins/switchboard/) | A compact page listing the chats open in your panes, in any bb window, with a state word each. Click one and bb's chat slides open in place. Made for a small second window (Cmd+Shift+N); Cmd+Shift+S opens it |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
 
 Built on bb 0.44 and running on 0.46, on a Mac.
@@ -21,9 +22,15 @@ bb builds each plugin itself, and installs any dependencies, so there's no `npm 
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin message-times --tag-prefix message-times/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin pane-attention --tag-prefix pane-attention/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.3.0 --plugin pane-keeper --tag-prefix pane-keeper/
+bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin switchboard --tag-prefix switchboard/
 ```
 
 **Message Times** works on its own, with any theme.
+
+**Switchboard** works on its own too. Its rail icon only shows once `switchboard/switchboard` is
+in bb's `sidebar.visiblePluginPanels` setting (or that setting is reset), and its New chat
+defaults to my project and checkout ids, so set `newChatProjectId` and `newChatEnvironmentId`
+to yours. The [Switchboard README](plugins/switchboard/) has the details.
 
 **Pane Attention draws nothing by itself.** It only sets attributes on the panes, and the theme
 does the drawing. Use the Sandbar theme below, or copy its "Pane attention" and "Sliding panes"
