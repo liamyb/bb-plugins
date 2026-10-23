@@ -59,6 +59,7 @@ function PaneAttention() {
         status: thread.status,
         runtimeStatus: thread.runtimeStatus,
         hasPendingInteraction: thread.hasPendingInteraction,
+        activity: thread.activity,
         indicator: thread.indicator,
         latestAttentionAt: thread.latestAttentionAt ?? null,
       });

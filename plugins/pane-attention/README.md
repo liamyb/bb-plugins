@@ -6,6 +6,10 @@ approval, a failed queued message) or the turn failed, it gets `data-pane-attent
 Focusing the pane clears "done" and a failure. A pending question stays marked on an unfocused
 pane until it's answered, the same as the question mark in the sidebar.
 
+A turn that ends with background agents, background commands or workflows still running doesn't
+count as finished. bb reports the thread as idle by then, so since 0.2.1 the plugin also reads the
+thread's activity counts, and the pane gets "done" when that work stops.
+
 The plugin draws nothing. The Sandbar theme in this repo ([`themes/sandbar/theme.css`](../../themes/sandbar/theme.css))
 styles the attribute next to its sliding-panes block, so all pane chrome lives in one file. With any other
 theme the attribute is there but nothing shows.

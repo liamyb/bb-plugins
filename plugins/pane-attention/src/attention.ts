@@ -1,7 +1,9 @@
 /**
  * Which split panes should catch the eye: a thread that finished a turn while
  * its pane was not focused ("done"), or one that is waiting on the user or
- * failed ("needs-you"). The focused pane never carries either.
+ * failed ("needs-you"). The focused pane never carries either. A turn that
+ * ends with background agents, commands or workflows still running isn't
+ * finished: the thread counts as working until they stop.
  *
  * bb's own unread flag can't do this. Every thread rendered in a split pane
  * marks itself read as soon as its attention time moves, focused or not, and a
@@ -18,8 +20,17 @@ export interface ThreadState {
   status: string;
   runtimeStatus: string;
   hasPendingInteraction: boolean;
+  /** Optional so an older host without it reads as nothing running. */
+  activity?: ThreadActivity;
   indicator: string;
   latestAttentionAt: number | null;
+}
+
+/** The counts of bb's `PluginSidebarThreadActivity` this logic reads. */
+export interface ThreadActivity {
+  workflows: number;
+  backgroundAgents: number;
+  backgroundCommands: number;
 }
 
 /** One pane of `useSidebarSplitLayout()`. */
@@ -51,9 +62,23 @@ const BUSY_RUNTIME = new Set([
 // Live states that wait on the user however recently the pane was focused.
 const WAITING_INDICATORS = new Set(["waiting-for-input", "queued-failed"]);
 
+// Work still running after the turn ends. Plan mode and goals are left out:
+// they're modes a thread can sit idle in, not work in flight.
+function hasBackgroundWork(thread: ThreadState): boolean {
+  const activity = thread.activity;
+  if (activity === undefined) return false;
+  return (
+    activity.workflows > 0 ||
+    activity.backgroundAgents > 0 ||
+    activity.backgroundCommands > 0
+  );
+}
+
 export function isBusy(thread: ThreadState): boolean {
   return (
-    BUSY_STATUS.has(thread.status) || BUSY_RUNTIME.has(thread.runtimeStatus)
+    BUSY_STATUS.has(thread.status) ||
+    BUSY_RUNTIME.has(thread.runtimeStatus) ||
+    hasBackgroundWork(thread)
   );
 }
 

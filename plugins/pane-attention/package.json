@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-pane-attention",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Marks an unfocused split pane whose thread finished a turn, or is waiting on you, and slides folded panes like Xbox 360 blades.",

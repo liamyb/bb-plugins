@@ -108,6 +108,28 @@ test("a pending question is needs-you whenever its pane is unfocused", () => {
   assert.equal(answered.attention.size, 0);
 });
 
+test("a turn that ends with background work running isn't done until the work stops", () => {
+  const nothing = { workflows: 0, backgroundAgents: 0, backgroundCommands: 0 };
+  let memory = run({}, panes("a", "a", "b"), { a: idle, b: running }).memory;
+  for (const activity of [
+    { ...nothing, workflows: 2 },
+    { ...nothing, backgroundAgents: 1 },
+    { ...nothing, backgroundCommands: 1 },
+  ]) {
+    const waiting = run(memory, panes("a", "a", "b"), {
+      a: idle,
+      b: { ...idle, activity },
+    });
+    assert.equal(waiting.attention.size, 0);
+    memory = waiting.memory;
+  }
+  const stopped = run(memory, panes("a", "a", "b"), {
+    a: idle,
+    b: { ...idle, activity: nothing },
+  });
+  assert.equal(stopped.attention.get("pane-2"), "done");
+});
+
 test("starting work again clears a done flag", () => {
   let memory = run({}, panes("a", "a", "b"), { a: idle, b: running }).memory;
   memory = run(memory, panes("a", "a", "b"), { a: idle, b: idle }).memory;
