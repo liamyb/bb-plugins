@@ -21,10 +21,22 @@ wide) and works in the main window too. There is no CLI command.
   choice, kept in localStorage.
 
 The state words are Needs you (pending interaction, `waiting-for-input` or `queued-failed`
-indicator, or `error` status), Working (`active`, `starting`, `stopping`, or a runtime status
-of `provisioning` or `host-reconnecting`), Done (bb's unread flag, or it went from working to
-idle while it wasn't the chat open in the slide) and Idle. Order is Needs you, Working, Done,
-then the rest by most recent attention.
+indicator, or `error` status), Working (`active`, `starting`, `stopping`, a runtime status
+of `provisioning` or `host-reconnecting`, or any running workflow, background agent or
+background command in the thread's `activity` counts), Done (bb's unread flag, or it went from
+working to idle while it wasn't the chat open in the slide) and Idle. Order is Needs you,
+Working, Done, then the rest by most recent attention.
+
+## Workflow lines
+
+Each running workflow of a listed thread shows as an indented line under it, before its
+children: the workflow name, then "settled/started agents" (done, failed or skipped, out of the
+agents spawned so far, so the total grows as it fans out), any failures, and the time since it
+started. Clicking the line opens the thread. The sidebar feed only has the count
+(`activity.workflows`), so while that's above zero the page calls `threads.timeline` with
+`summaryOnly: "true"` for that thread, at once and every 10 seconds, and reads
+`activeWorkflows`. A line shows only while the live count is above zero. Background agents and
+background commands get no lines.
 
 ## Settings
 
@@ -42,7 +54,7 @@ then the rest by most recent attention.
 ## How panes cross windows
 
 An overlay in every bb window reports that window's panes to the plugin server over RPC
-(`reportPanes`), keyed by a per-window id kept in sessionStorage. The server keeps the union in
+(`reportPanes`), keyed by a per-window id kept in `window.name`. The server keeps the union in
 kv (`window:<id>`), publishes it on the realtime channel `panes` when it changes, and drops a
 window on `forgetWindow` or when its report expires. A plugin page takes the focused pane's
 place, so the thread it displaced stays reported until that pane shows a thread again or

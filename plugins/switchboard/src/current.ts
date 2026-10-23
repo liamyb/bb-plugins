@@ -1,9 +1,8 @@
 /**
  * The list: which threads Switchboard shows, nested how, in what order, and
- * with which state word. The needs-you rule is Pane Attention's. The busy rule
- * is Pane Attention's too, plus one thing it misses: a thread whose turn has
- * ended while its background agents, commands or workflows are still running
- * is working, not done.
+ * with which state word. The needs-you and busy rules are Pane Attention's,
+ * so a thread whose turn has ended while its background agents, commands or
+ * workflows are still running is working, not done.
  *
  * "Done" needs a memory. bb marks a thread rendered in a split pane read as
  * soon as its attention time moves, focused or not, and a child thread's
@@ -12,6 +11,10 @@
  * small memory of what each listed thread was doing, and a thread that goes
  * from working to idle while it isn't the one open in the slide is Done
  * until it's opened, or starts working again.
+ *
+ * A thread's running workflows show as lines under it, where a child would
+ * sit. bb's sidebar feed only counts them, so the page reads the detail from
+ * the thread's timeline while the count is above zero (see `parseWorkflowRuns`).
  *
  * Pure, so it can be tested without bb.
  */
@@ -267,4 +270,114 @@ export function parseMemory(raw: string | null): MemoryMap {
 
 export function serializeMemory(memory: MemoryMap): string {
   return JSON.stringify(memory);
+}
+
+/** One running workflow, from an entry in the timeline's `activeWorkflows`. */
+export interface WorkflowRun {
+  id: string;
+  name: string;
+  /** Agents that have finished, failed or been skipped, out of `total`. */
+  settled: number;
+  failed: number;
+  total: number;
+  startedAt: number;
+}
+
+/** Each thread's running workflows, by thread id. */
+export type RunMap = ReadonlyMap<string, readonly WorkflowRun[]>;
+
+// Skipped in case a snapshot still carries a run that has ended.
+const ENDED_TASK = new Set(["completed", "failed", "killed", "stopped"]);
+const SETTLED_AGENT = new Set(["done", "failed", "skipped"]);
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function nonEmpty(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+/**
+ * The running workflows in a thread timeline response, oldest first, dropping
+ * anything malformed. The shape is bb's `threads.timeline` response; it's
+ * read field by field because the page takes it as it comes.
+ */
+export function parseWorkflowRuns(timeline: unknown): WorkflowRun[] {
+  const list = record(timeline)?.activeWorkflows;
+  if (!Array.isArray(list)) return [];
+  const runs: WorkflowRun[] = [];
+  for (const item of list) {
+    const entry = record(item);
+    if (entry === null) continue;
+    const { id, startedAt, taskStatus } = entry;
+    if (typeof id !== "string" || typeof startedAt !== "number") continue;
+    if (typeof taskStatus === "string" && ENDED_TASK.has(taskStatus)) continue;
+    const name =
+      nonEmpty(entry.workflowName) ?? nonEmpty(record(entry.presentation)?.title) ?? "Workflow";
+    const agents = record(entry.workflow)?.agents;
+    let settled = 0;
+    let failed = 0;
+    let total = 0;
+    for (const agent of Array.isArray(agents) ? agents : []) {
+      const state = record(agent)?.state;
+      if (typeof state !== "string") continue;
+      total += 1;
+      if (SETTLED_AGENT.has(state)) settled += 1;
+      if (state === "failed") failed += 1;
+    }
+    runs.push({ id, name, settled, failed, total, startedAt });
+  }
+  return runs.sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/** "40s", "6m", "1h 5m". */
+export function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** The right-hand side of a run line: "11/13 agents · 6m". */
+export function runProgress(run: WorkflowRun, now: number): string {
+  const elapsed = formatElapsed(now - run.startedAt);
+  if (run.total === 0) return elapsed;
+  const agents = `${run.settled}/${run.total} ${run.total === 1 ? "agent" : "agents"}`;
+  const failed = run.failed > 0 ? `, ${run.failed} failed` : "";
+  return `${agents}${failed} · ${elapsed}`;
+}
+
+/**
+ * The listed threads whose workflow count is above zero, in reading order,
+ * with the count. These are the ones the page polls.
+ */
+export function threadsWithWorkflows(
+  rows: readonly Row[],
+  threads: ReadonlyMap<string, ThreadFacts>,
+): { id: string; workflows: number }[] {
+  const out: { id: string; workflows: number }[] = [];
+  for (const { row } of flatten(rows)) {
+    const workflows = threads.get(row.id)?.activity?.workflows ?? 0;
+    if (workflows > 0) out.push({ id: row.id, workflows });
+  }
+  return out;
+}
+
+/**
+ * The runs after a poll of `polled`. A thread whose fetch failed (null) keeps
+ * what it had; a thread no longer polled is dropped.
+ */
+export function nextRuns(
+  previous: RunMap,
+  polled: readonly string[],
+  fetched: ReadonlyMap<string, readonly WorkflowRun[] | null>,
+): RunMap {
+  const next = new Map<string, readonly WorkflowRun[]>();
+  for (const id of polled) {
+    const runs = fetched.get(id) ?? previous.get(id);
+    if (runs !== undefined && runs.length > 0) next.set(id, runs);
+  }
+  return next;
 }

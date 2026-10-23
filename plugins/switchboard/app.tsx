@@ -7,8 +7,10 @@
 //   another, and it answers "Open in a pane" for the window that owns them.
 // - The page (a nav panel) lists the open threads with a state word each,
 //   slides bb's ThreadChat open when a row is clicked, and starts new chats
-//   with bb's New thread composer. The list rules are pure in src/current.ts
-//   and the pane rules in src/panes.ts; the CSS is in src/styles.ts.
+//   with bb's New thread composer. A thread's running workflows show as lines
+//   under it, read from its timeline while bb counts any. The list rules are
+//   pure in src/current.ts and the pane rules in src/panes.ts; the CSS is in
+//   src/styles.ts.
 import {
   useCallback,
   useEffect,
@@ -47,10 +49,16 @@ import type { rpcContract } from "./server";
 import {
   STATE_LABEL,
   buildList,
+  nextRuns,
   parseMemory,
+  parseWorkflowRuns,
+  runProgress,
   serializeMemory,
+  threadsWithWorkflows,
   type MemoryMap,
   type Row,
+  type RunMap,
+  type WorkflowRun,
 } from "./src/current";
 import {
   COMPACT_QUERY,
@@ -75,6 +83,9 @@ const PANEL_PATH = "switchboard";
 // Debounce for pane reports: bb's layout can change several times in a frame
 // while a split opens.
 const REPORT_DEBOUNCE_MS = 150;
+
+// How often the run lines refresh while any listed thread has a workflow running.
+const WORKFLOW_POLL_MS = 10_000;
 
 // sessionStorage, like Pane Attention and Pane Keeper: a reload keeps the
 // state, a new window starts clean. The show-all toggle is localStorage, so
@@ -389,16 +400,104 @@ function toActionTarget(thread: PluginSidebarThread): PluginThreadActionTarget {
   };
 }
 
+/**
+ * The running workflows of the threads in `polled`. bb's sidebar feed only
+ * counts them, so this reads each thread's timeline (the summary, without its
+ * rows) at once and then every WORKFLOW_POLL_MS, and stops when `polled` is
+ * empty. `now` moves with each poll, for the elapsed times.
+ */
+function useWorkflowRuns(polled: readonly { id: string; workflows: number }[]): {
+  runs: RunMap;
+  now: number;
+} {
+  const sdk = useSdk();
+  // The counts are in the key, so a second run starting refetches at once.
+  const key = JSON.stringify(polled);
+  const [state, setState] = useState<{ runs: RunMap; now: number }>(() => ({
+    runs: new Map(),
+    now: Date.now(),
+  }));
+  useEffect(() => {
+    const ids = (JSON.parse(key) as { id: string }[]).map(({ id }) => id);
+    if (ids.length === 0) {
+      setState((current) => (current.runs.size === 0 ? current : { runs: new Map(), now: Date.now() }));
+      return;
+    }
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const poll = async () => {
+      const fetched = new Map<string, WorkflowRun[] | null>();
+      await Promise.all(
+        ids.map(async (threadId) => {
+          try {
+            const timeline = await sdk.threads.timeline({
+              threadId,
+              summaryOnly: "true",
+              signal: controller.signal,
+            });
+            fetched.set(threadId, parseWorkflowRuns(timeline));
+          } catch {
+            // Keeps the lines it had until the next poll.
+            fetched.set(threadId, null);
+          }
+        }),
+      );
+      if (controller.signal.aborted) return;
+      setState((current) => ({ runs: nextRuns(current.runs, ids, fetched), now: Date.now() }));
+      timer = window.setTimeout(() => void poll(), WORKFLOW_POLL_MS);
+    };
+    void poll();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [sdk, key]);
+  return state;
+}
+
+interface RunLineProps {
+  run: WorkflowRun;
+  depth: number;
+  now: number;
+  threadTitle: string;
+  onOpen(): void;
+}
+
+/** A workflow running in a thread. It has no chat of its own, so it opens the thread's. */
+function RunLine({ run, depth, now, threadTitle, onOpen }: RunLineProps) {
+  const progress = runProgress(run, now);
+  return (
+    <li>
+      <div className="sb-row sb-run" data-depth={depth} style={{ marginLeft: `${0.375 + depth}rem` }}>
+        <button
+          type="button"
+          className="sb-row-main"
+          aria-label={`${run.name}, ${progress}, running in ${threadTitle}`}
+          onClick={onOpen}
+        >
+          <span className="sb-glyph" aria-hidden="true">
+            <ThreadStatusGlyph indicator="workflow" size="compact" />
+          </span>
+          <span className="sb-title">{run.name}</span>
+          <span className="sb-state">{progress}</span>
+        </button>
+      </div>
+    </li>
+  );
+}
+
 interface RowProps {
   row: Row;
   depth: number;
   threads: ReadonlyMap<string, PluginSidebarThread>;
+  runs: RunMap;
+  now: number;
   selectedId: string | null;
   onOpen(threadId: string): void;
   onOpenInPane(threadId: string): void;
 }
 
-function ThreadRow({ row, depth, threads, selectedId, onOpen, onOpenInPane }: RowProps) {
+function ThreadRow({ row, depth, threads, runs, now, selectedId, onOpen, onOpenInPane }: RowProps) {
   const thread = threads.get(row.id);
   const rowStatus = useSidebarThreadRowStatus(row.id);
   const inline = useMemo<PluginThreadActionsInlineItem[]>(
@@ -418,6 +517,8 @@ function ThreadRow({ row, depth, threads, selectedId, onOpen, onOpenInPane }: Ro
   if (thread === undefined) return null;
   const selected = selectedId === row.id;
   const label = STATE_LABEL[row.state];
+  // The count is live and the timeline is polled, so the count decides.
+  const running = (thread.activity?.workflows ?? 0) > 0 ? (runs.get(row.id) ?? []) : [];
   return (
     <li>
       <div
@@ -456,14 +557,26 @@ function ThreadRow({ row, depth, threads, selectedId, onOpen, onOpenInPane }: Ro
           )}
         />
       </div>
-      {row.children.length > 0 ? (
+      {running.length > 0 || row.children.length > 0 ? (
         <ul>
+          {running.map((run) => (
+            <RunLine
+              key={run.id}
+              run={run}
+              depth={depth + 1}
+              now={now}
+              threadTitle={thread.displayTitle}
+              onOpen={() => onOpen(row.id)}
+            />
+          ))}
           {row.children.map((child) => (
             <ThreadRow
               key={child.id}
               row={child}
               depth={depth + 1}
               threads={threads}
+              runs={runs}
+              now={now}
               selectedId={selectedId}
               onOpen={onOpen}
               onOpenInPane={onOpenInPane}
@@ -584,6 +697,9 @@ function SwitchboardPage() {
       writeStorage("session", KEYS.memory, serializeMemory(memoryRef.current));
     }
   }, [rows]);
+
+  const polled = useMemo(() => threadsWithWorkflows(rows, byId), [rows, byId]);
+  const { runs, now } = useWorkflowRuns(polled);
 
   // A new chat this page started drops out once bb no longer lists it
   // (archived, say). Only an id the list has carried at some point counts as
@@ -750,6 +866,8 @@ function SwitchboardPage() {
                 row={row}
                 depth={0}
                 threads={byId}
+                runs={runs}
+                now={now}
                 selectedId={selectedId}
                 onOpen={openThread}
                 onOpenInPane={openInPane}

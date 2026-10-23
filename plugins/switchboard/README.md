@@ -20,9 +20,17 @@ back, from anywhere.
   that's off working on its own is visible from the chat that started it. Setting
   `showChildren` turns that off.
 - **A state word.** Needs you (a question, an approval, a failed queued message or a failed
-  turn), Working, Done (it finished a turn while it wasn't the one you had open, or bb marks it
+  turn), Working (including a turn that's ended with background agents, commands or workflows
+  still running), Done (it finished a turn while it wasn't the one you had open, or bb marks it
   unread) and Idle. Done clears when you open the chat, or when it starts working again. The
   rules are Pane Attention's, so the two never disagree.
+- **Running workflows.** Each workflow a listed thread has running shows as its own line under
+  it, where a child would sit: the workflow's name on the left, and its agents and how long it's
+  been going on the right, like `11/13 agents · 6m`. The agent count is the agents that have
+  finished out of the ones it has spawned so far, so it grows as a workflow fans out, and
+  failures are added when there are any (`11/13 agents, 1 failed`). The lines refresh every 10
+  seconds while anything runs and go when the workflow ends. A workflow has no chat of its own,
+  so clicking its line opens the thread that started it.
 - **The order.** Needs you first, then Working, then Done, then the rest by most recent
   attention. Children sort the same way under their parent.
 - **All threads.** The toggle at the top shows every active thread instead, for when nothing's
@@ -78,6 +86,15 @@ the thread back when you leave. So the thread it displaced stays listed until th
 thread again or closes, and a window with a single pane keeps reporting the thread it showed
 before the page. Without that, the chat you'd just been in would vanish from the list the
 moment you opened Switchboard.
+
+## How it reads workflows
+
+bb's thread list only counts a thread's running workflows. The detail is on the thread's
+timeline, so while a listed thread's count is above zero, the page reads that thread's
+timeline summary (`threads.timeline` with `summaryOnly`, which leaves out the chat's rows) at
+once and then every 10 seconds, and stops when the count drops to zero. The count comes live
+from bb, so a line goes as soon as its workflow ends rather than at the next read. Each open
+Switchboard page reads for itself, and nothing reads while no page is open.
 
 ## Settings
 

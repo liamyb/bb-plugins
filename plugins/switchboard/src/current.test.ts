@@ -4,14 +4,20 @@ import { test } from "node:test";
 import {
   buildList,
   flatten,
+  formatElapsed,
+  nextRuns,
   parseMemory,
+  parseWorkflowRuns,
+  runProgress,
   serializeMemory,
   stateOf,
   stepMemory,
+  threadsWithWorkflows,
   type ListOptions,
   type MemoryMap,
   type Row,
   type ThreadFacts,
+  type WorkflowRun,
 } from "./current.ts";
 
 function thread(id: string, extra: Partial<ThreadFacts> = {}): ThreadFacts {
@@ -270,4 +276,133 @@ test("flatten walks the tree in reading order with depths", () => {
       ["c", 0],
     ],
   );
+});
+
+// An `activeWorkflows` entry modelled on a live `threads.timeline` response
+// (bb 0.46.1, 23 Oct 2026), with made-up times and agents.
+function workflowEntry(extra: Record<string, unknown> = {}, states: string[] = []) {
+  return {
+    id: "da98121b67-i1743",
+    kind: "work",
+    workKind: "workflow",
+    status: "pending",
+    taskType: "local_workflow",
+    workflowName: "verify-deliverable",
+    description: "Extract the checkable claims from a deliverable",
+    taskStatus: "running",
+    startedAt: 1_000_000,
+    presentation: { label: { pending: "Running workflow", completed: "Workflow finished" }, title: "verify-deliverable" },
+    workflow: {
+      agents: states.map((state, index) => ({ index: index + 1, label: `agent#${index + 1}`, state })),
+      phases: [{ index: 1, title: "Extract" }],
+    },
+    ...extra,
+  };
+}
+
+test("a timeline's active workflows become runs, counting settled and failed agents", () => {
+  const runs = parseWorkflowRuns({
+    rows: [],
+    activeWorkflows: [
+      workflowEntry({}, ["done", "done", "failed", "skipped", "running", "queued"]),
+    ],
+  });
+  assert.deepEqual(runs, [
+    {
+      id: "da98121b67-i1743",
+      name: "verify-deliverable",
+      settled: 4,
+      failed: 1,
+      total: 6,
+      startedAt: 1_000_000,
+    },
+  ]);
+});
+
+test("runs fall back on the presentation title, skip ended and malformed entries, oldest first", () => {
+  const runs = parseWorkflowRuns({
+    activeWorkflows: [
+      workflowEntry({ id: "late", startedAt: 9, workflowName: null }),
+      workflowEntry({ id: "early", startedAt: 1, workflowName: "", presentation: undefined }),
+      workflowEntry({ id: "ended", taskStatus: "completed" }),
+      workflowEntry({ id: "killed", taskStatus: "killed" }),
+      workflowEntry({ id: 4 }),
+      workflowEntry({ id: "no-start", startedAt: "soon" }),
+      workflowEntry({ id: "no-detail", startedAt: 5, workflow: null }),
+      "junk",
+      null,
+    ],
+  });
+  assert.deepEqual(
+    runs.map((run) => [run.id, run.name, run.total]),
+    [
+      ["early", "Workflow", 0],
+      ["no-detail", "verify-deliverable", 0],
+      ["late", "verify-deliverable", 0],
+    ],
+  );
+  assert.deepEqual(parseWorkflowRuns(null), []);
+  assert.deepEqual(parseWorkflowRuns({ activeWorkflows: "none" }), []);
+  assert.deepEqual(parseWorkflowRuns({}), []);
+});
+
+const run = (extra: Partial<WorkflowRun> = {}): WorkflowRun => ({
+  id: "r",
+  name: "verify-deliverable",
+  settled: 11,
+  failed: 0,
+  total: 13,
+  startedAt: 0,
+  ...extra,
+});
+
+test("a run line reads agents settled, any failures, then time since it started", () => {
+  assert.equal(runProgress(run(), 6 * 60_000 + 20_000), "11/13 agents · 6m");
+  assert.equal(runProgress(run({ failed: 1 }), 40_000), "11/13 agents, 1 failed · 40s");
+  assert.equal(runProgress(run({ settled: 0, total: 1 }), 0), "0/1 agent · 0s");
+  assert.equal(runProgress(run({ total: 0, settled: 0 }), 90_000), "1m");
+  // A clock a little behind the server's never shows a negative time.
+  assert.equal(runProgress(run({ startedAt: 5_000 }), 0), "11/13 agents · 0s");
+  assert.equal(formatElapsed(59_999), "59s");
+  assert.equal(formatElapsed(60 * 60_000), "1h 0m");
+  assert.equal(formatElapsed(65 * 60_000 + 59_000), "1h 5m");
+});
+
+test("only listed threads with a workflow count above zero are polled, in reading order", () => {
+  const active = (workflows: number) => ({ ...nothing, workflows });
+  const threads = [
+    thread("parent", { activity: active(1) }),
+    thread("child", { parentThreadId: "parent", activity: active(2) }),
+    thread("quiet", { activity: nothing }),
+    thread("old-host"),
+    thread("unlisted", { activity: active(3) }),
+  ];
+  const { rows } = buildList(threads, new Set(["parent", "quiet", "old-host"]), panes, {});
+  const byId = new Map(threads.map((item) => [item.id, item]));
+  assert.deepEqual(threadsWithWorkflows(rows, byId), [
+    { id: "parent", workflows: 1 },
+    { id: "child", workflows: 2 },
+  ]);
+});
+
+test("a poll replaces a thread's runs, keeps them when its fetch failed, and drops unpolled threads", () => {
+  const previous = new Map([
+    ["a", [run({ id: "a1" })]],
+    ["b", [run({ id: "b1" })]],
+    ["gone", [run({ id: "g1" })]],
+  ]);
+  const fetched = new Map<string, WorkflowRun[] | null>([
+    ["a", [run({ id: "a2" })]],
+    ["b", null],
+    ["c", []],
+  ]);
+  const next = nextRuns(previous, ["a", "b", "c"], fetched);
+  assert.deepEqual(
+    [...next].map(([id, runs]) => [id, runs.map((item) => item.id)]),
+    [
+      ["a", ["a2"]],
+      ["b", ["b1"]],
+    ],
+  );
+  assert.equal(nextRuns(previous, [], fetched).size, 0);
 });

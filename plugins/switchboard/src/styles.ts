@@ -217,6 +217,17 @@ export const CSS = `
   outline-offset: 1px;
 }
 
+/* A workflow running in the thread above: a quieter line where a child would sit. */
+.sb-run .sb-row-main {
+  min-height: 1.625rem;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+}
+.sb-run .sb-title {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
 /* The slide: bb's chat, or the New thread composer, sliding in from the right. */
 .sb-slide {
   position: absolute;
