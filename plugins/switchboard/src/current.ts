@@ -1,7 +1,9 @@
 /**
  * The list: which threads Switchboard shows, nested how, in what order, and
- * with which state word. The busy and needs-you rules are Pane Attention's,
- * so the two plugins never disagree about a thread.
+ * with which state word. The needs-you rule is Pane Attention's. The busy rule
+ * is Pane Attention's too, plus one thing it misses: a thread whose turn has
+ * ended while its background agents, commands or workflows are still running
+ * is working, not done.
  *
  * "Done" needs a memory. bb marks a thread rendered in a split pane read as
  * soon as its attention time moves, focused or not, and a child thread's
@@ -37,12 +39,21 @@ export interface ThreadFacts {
   status: string;
   runtimeStatus: string;
   hasPendingInteraction: boolean;
+  /** Optional so an older host without it reads as nothing running. */
+  activity?: ThreadActivity;
   indicator: string;
   isUnread: boolean;
   isHidden: boolean;
   isArchived: boolean;
   latestAttentionAt: number | null;
   updatedAt: number;
+}
+
+/** The counts of bb's `PluginSidebarThreadActivity` this logic reads. */
+export interface ThreadActivity {
+  workflows: number;
+  backgroundAgents: number;
+  backgroundCommands: number;
 }
 
 /** What the page remembers about a listed thread. */
@@ -82,8 +93,20 @@ const BUSY_RUNTIME = new Set([
 // Live states that wait on the user.
 const WAITING_INDICATORS = new Set(["waiting-for-input", "queued-failed"]);
 
+// Work still running after the turn ends. Plan mode and goals are left out:
+// they're modes a thread can sit idle in, not work in flight.
+function hasBackgroundWork(thread: ThreadFacts): boolean {
+  const activity = thread.activity;
+  if (activity === undefined) return false;
+  return activity.workflows > 0 || activity.backgroundAgents > 0 || activity.backgroundCommands > 0;
+}
+
 export function isBusy(thread: ThreadFacts): boolean {
-  return BUSY_STATUS.has(thread.status) || BUSY_RUNTIME.has(thread.runtimeStatus);
+  return (
+    BUSY_STATUS.has(thread.status) ||
+    BUSY_RUNTIME.has(thread.runtimeStatus) ||
+    hasBackgroundWork(thread)
+  );
 }
 
 export function isWaitingOnUser(thread: ThreadFacts): boolean {

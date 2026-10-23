@@ -59,6 +59,50 @@ test("the state word follows Pane Attention's rules", () => {
   assert.equal(stateOf(thread("a"), null), "idle");
 });
 
+const nothing = { workflows: 0, backgroundAgents: 0, backgroundCommands: 0 };
+
+test("background agents, commands and workflows count as working after the turn ends", () => {
+  assert.equal(stateOf(thread("a", { activity: { ...nothing, workflows: 2 } }), null), "working");
+  assert.equal(
+    stateOf(thread("a", { activity: { ...nothing, backgroundAgents: 1 } }), null),
+    "working",
+  );
+  assert.equal(
+    stateOf(thread("a", { activity: { ...nothing, backgroundCommands: 1 } }), null),
+    "working",
+  );
+  assert.equal(stateOf(thread("a", { activity: nothing }), null), "idle");
+  // Still waiting on the user comes first.
+  assert.equal(
+    stateOf(thread("a", { hasPendingInteraction: true, activity: { ...nothing, workflows: 1 } }), null),
+    "needs-you",
+  );
+});
+
+test("a turn that ends with workflows still running stays Working, then is Done when they finish", () => {
+  const open = new Set(["a"]);
+  let memory: MemoryMap = {};
+  let result = buildList([thread("a", { status: "active" })], open, panes, memory);
+  memory = result.memory;
+  // The turn ends, two workflows still running: not Done yet.
+  result = buildList([thread("a", { activity: { ...nothing, workflows: 2 } })], open, panes, memory);
+  memory = result.memory;
+  assert.equal(result.rows[0]!.state, "working");
+  assert.equal(memory.a!.flag, null);
+  // Opened and left in the slide while they run: still Working, not Idle.
+  result = buildList(
+    [thread("a", { activity: { ...nothing, workflows: 2 } })],
+    open,
+    { ...panes, selectedId: "a" },
+    memory,
+  );
+  memory = result.memory;
+  assert.equal(result.rows[0]!.state, "working");
+  // Back out of the slide, and the workflows finish: Done.
+  result = buildList([thread("a", { activity: nothing })], open, panes, memory);
+  assert.equal(result.rows[0]!.state, "done");
+});
+
 test("only threads open in a pane are listed, never hidden or archived ones", () => {
   const threads = [
     thread("a"),
