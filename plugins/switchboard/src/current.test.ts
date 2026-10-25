@@ -315,6 +315,7 @@ test("a timeline's active workflows become runs, counting settled and failed age
       failed: 1,
       total: 6,
       startedAt: 1_000_000,
+      phase: null,
     },
   ]);
 });
@@ -353,6 +354,7 @@ const run = (extra: Partial<WorkflowRun> = {}): WorkflowRun => ({
   failed: 0,
   total: 13,
   startedAt: 0,
+  phase: null,
   ...extra,
 });
 
@@ -366,6 +368,71 @@ test("a run line reads agents settled, any failures, then time since it started"
   assert.equal(formatElapsed(59_999), "59s");
   assert.equal(formatElapsed(60 * 60_000), "1h 0m");
   assert.equal(formatElapsed(65 * 60_000 + 59_000), "1h 5m");
+});
+
+// verify-deliverable's five declared phases, as the live payload lists them.
+const declared = ["Extract", "Compute", "Refute", "Escalate", "Report"].map((title, i) => ({
+  index: i + 1,
+  title,
+}));
+
+function phasedRun(agents: { state: string; phaseIndex?: number }[], phases: unknown = declared) {
+  const [parsed] = parseWorkflowRuns({
+    activeWorkflows: [workflowEntry({ startedAt: 0, workflow: { agents, phases } })],
+  });
+  return parsed!;
+}
+
+test("a run's phase is the earliest declared one with an agent queued or running", () => {
+  // A pipeline with Refute and Escalate overlapping: Refute is where it is.
+  const overlapping = phasedRun([
+    { state: "done", phaseIndex: 1 },
+    { state: "running", phaseIndex: 4 },
+    { state: "queued", phaseIndex: 3 },
+    { state: "done", phaseIndex: 3 },
+  ]);
+  assert.deepEqual(overlapping.phase, { title: "Refute", position: 3, of: 5 });
+  assert.equal(runProgress(overlapping, 6 * 60_000), "Refute · 3 of 5 · 6m");
+});
+
+test("between phases, with nothing queued or running, it's the latest phase any agent reached", () => {
+  const between = phasedRun([
+    { state: "done", phaseIndex: 1 },
+    { state: "failed", phaseIndex: 3 },
+    { state: "done", phaseIndex: 3 },
+  ]);
+  assert.deepEqual(between.phase, { title: "Refute", position: 3, of: 5 });
+  assert.equal(runProgress(between, 40_000), "Refute · 3 of 5, 1 failed · 40s");
+});
+
+test("the position counts declared phases in index order, and untitled phases read as a number", () => {
+  const sparse = phasedRun(
+    [{ state: "running", phaseIndex: 20 }],
+    [
+      { index: 20, title: "" },
+      { index: 10, title: "Read" },
+      { index: "x", title: "Junk" },
+    ],
+  );
+  assert.deepEqual(sparse.phase, { title: null, position: 2, of: 2 });
+  assert.equal(runProgress(sparse, 0), "phase 2 of 2 · 0s");
+});
+
+test("no declared phases, or no agent in one, keeps the agent count", () => {
+  const agents = [
+    { state: "done", phaseIndex: 1 },
+    { state: "running", phaseIndex: 2 },
+  ];
+  const undeclared = phasedRun(agents, []);
+  assert.equal(undeclared.phase, null);
+  assert.equal(runProgress(undeclared, 40_000), "1/2 agents · 40s");
+  // Agents outside the declared phases, or with no phase at all.
+  const outside = phasedRun([{ state: "running", phaseIndex: 9 }, { state: "done" }]);
+  assert.equal(outside.phase, null);
+  assert.equal(runProgress(outside, 40_000), "1/2 agents · 40s");
+  // Phases declared but no agent yet.
+  assert.equal(phasedRun([]).phase, null);
+  assert.equal(phasedRun([], null).phase, null);
 });
 
 test("only listed threads with a workflow count above zero are polled, in reading order", () => {

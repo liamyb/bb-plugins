@@ -281,6 +281,15 @@ export interface WorkflowRun {
   failed: number;
   total: number;
   startedAt: number;
+  /** Where it is, when the workflow declares phases and its agents carry them. */
+  phase: RunPhase | null;
+}
+
+/** A declared phase, with its place in the declared list: "Refute", 3 of 5. */
+export interface RunPhase {
+  title: string | null;
+  position: number;
+  of: number;
 }
 
 /** Each thread's running workflows, by thread id. */
@@ -289,6 +298,7 @@ export type RunMap = ReadonlyMap<string, readonly WorkflowRun[]>;
 // Skipped in case a snapshot still carries a run that has ended.
 const ENDED_TASK = new Set(["completed", "failed", "killed", "stopped"]);
 const SETTLED_AGENT = new Set(["done", "failed", "skipped"]);
+const ACTIVE_AGENT = new Set(["queued", "running"]);
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
@@ -315,20 +325,54 @@ export function parseWorkflowRuns(timeline: unknown): WorkflowRun[] {
     if (typeof taskStatus === "string" && ENDED_TASK.has(taskStatus)) continue;
     const name =
       nonEmpty(entry.workflowName) ?? nonEmpty(record(entry.presentation)?.title) ?? "Workflow";
-    const agents = record(entry.workflow)?.agents;
+    const workflow = record(entry.workflow);
+    const agents = Array.isArray(workflow?.agents) ? workflow.agents : [];
     let settled = 0;
     let failed = 0;
     let total = 0;
-    for (const agent of Array.isArray(agents) ? agents : []) {
+    for (const agent of agents) {
       const state = record(agent)?.state;
       if (typeof state !== "string") continue;
       total += 1;
       if (SETTLED_AGENT.has(state)) settled += 1;
       if (state === "failed") failed += 1;
     }
-    runs.push({ id, name, settled, failed, total, startedAt });
+    const phase = currentPhase(workflow?.phases, agents);
+    runs.push({ id, name, settled, failed, total, startedAt, phase });
   }
   return runs.sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/**
+ * The phase a run is in: the earliest declared phase with an agent queued or
+ * running, so a pipeline whose phases overlap never reads further along than
+ * it is. Between phases, with nothing queued or running, the latest phase an
+ * agent has reached. Null with no declared phases, or no agent in one.
+ */
+function currentPhase(declared: unknown, agents: readonly unknown[]): RunPhase | null {
+  const phases: { index: number; title: string | null }[] = [];
+  for (const item of Array.isArray(declared) ? declared : []) {
+    const phase = record(item);
+    if (typeof phase?.index !== "number") continue;
+    phases.push({ index: phase.index, title: nonEmpty(phase.title) });
+  }
+  phases.sort((a, b) => a.index - b.index);
+  const positionOf = new Map(phases.map((phase, i) => [phase.index, i]));
+  let earliestActive: number | null = null;
+  let latestReached: number | null = null;
+  for (const item of agents) {
+    const agent = record(item);
+    const at = agent?.phaseIndex;
+    if (typeof at !== "number" || !positionOf.has(at)) continue;
+    const position = positionOf.get(at)!;
+    if (latestReached === null || position > latestReached) latestReached = position;
+    if (typeof agent?.state === "string" && ACTIVE_AGENT.has(agent.state)) {
+      if (earliestActive === null || position < earliestActive) earliestActive = position;
+    }
+  }
+  const position = earliestActive ?? latestReached;
+  if (position === null) return null;
+  return { title: phases[position]!.title, position: position + 1, of: phases.length };
 }
 
 /** "40s", "6m", "1h 5m". */
@@ -340,12 +384,20 @@ export function formatElapsed(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** The right-hand side of a run line: "11/13 agents · 6m". */
+/**
+ * The right-hand side of a run line: "Refute · 3 of 5 · 6m" when it's in a
+ * declared phase, otherwise "11/13 agents · 6m". Failures are added to either.
+ */
 export function runProgress(run: WorkflowRun, now: number): string {
   const elapsed = formatElapsed(now - run.startedAt);
+  const failed = run.failed > 0 ? `, ${run.failed} failed` : "";
+  if (run.phase !== null) {
+    const { title, position, of } = run.phase;
+    const where = title === null ? `phase ${position} of ${of}` : `${title} · ${position} of ${of}`;
+    return `${where}${failed} · ${elapsed}`;
+  }
   if (run.total === 0) return elapsed;
   const agents = `${run.settled}/${run.total} ${run.total === 1 ? "agent" : "agents"}`;
-  const failed = run.failed > 0 ? `, ${run.failed} failed` : "";
   return `${agents}${failed} · ${elapsed}`;
 }
 

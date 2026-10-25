@@ -30,9 +30,14 @@ Working, Done, then the rest by most recent attention.
 ## Workflow lines
 
 Each running workflow of a listed thread shows as an indented line under it, before its
-children: the workflow name, then "settled/started agents" (done, failed or skipped, out of the
-agents spawned so far, so the total grows as it fans out), any failures, and the time since it
-started. Clicking the line opens the thread. The sidebar feed only has the count
+children: the workflow name, then where it is, any failures, and the time since it started.
+"Where it is" is the phase when the workflow declares phases (`workflow.phases`) and its agents
+carry a `phaseIndex` among them: the earliest declared phase with an agent `queued` or
+`running`, or between phases the latest one any agent reached, shown as "Refute · 3 of 5" (the
+position among the declared phases in index order; "phase 3 of 5" when the phase has no title).
+Otherwise it's "settled/spawned agents" (done, failed or skipped, out of the agents spawned so
+far, so the total grows as it fans out). Clicking the line opens the thread, and its tooltip
+is the whole line. The sidebar feed only has the count
 (`activity.workflows`), so while that's above zero the page calls `threads.timeline` with
 `summaryOnly: "true"` for that thread, at once and every 10 seconds, and reads
 `activeWorkflows`. A line shows only while the live count is above zero. Background agents and

@@ -25,12 +25,16 @@ back, from anywhere.
   unread) and Idle. Done clears when you open the chat, or when it starts working again. The
   rules are Pane Attention's, so the two never disagree.
 - **Running workflows.** Each workflow a listed thread has running shows as its own line under
-  it, where a child would sit: the workflow's name on the left, and its agents and how long it's
-  been going on the right, like `11/13 agents · 6m`. The agent count is the agents that have
-  finished out of the ones it has spawned so far, so it grows as a workflow fans out, and
-  failures are added when there are any (`11/13 agents, 1 failed`). The lines refresh every 10
-  seconds while anything runs and go when the workflow ends. A workflow has no chat of its own,
-  so clicking its line opens the thread that started it.
+  it, where a child would sit: the workflow's name on the left, and where it's got to and how
+  long it's been going on the right. A workflow that declares phases shows the phase it's in
+  and its place among them, like `Refute · 3 of 5 · 6m`. Where phases overlap, which happens in
+  a pipeline, that's the earliest one with an agent still queued or running, so the line never
+  reads further along than the run is. A workflow without phases shows its agents instead, like
+  `11/13 agents · 6m`: the ones that have finished out of the ones it has spawned so far, so the
+  total grows as it fans out. Failures are added to either when there are any
+  (`Refute · 3 of 5, 1 failed · 6m`), and hovering shows the whole line. The lines refresh every
+  10 seconds while anything runs and go when the workflow ends. A workflow has no chat of its
+  own, so clicking its line opens the thread that started it.
 - **The order.** Needs you first, then Working, then Done, then the rest by most recent
   attention. Children sort the same way under their parent.
 - **All threads.** The toggle at the top shows every active thread instead, for when nothing's

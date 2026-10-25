@@ -473,6 +473,7 @@ function RunLine({ run, depth, now, threadTitle, onOpen }: RunLineProps) {
           type="button"
           className="sb-row-main"
           aria-label={`${run.name}, ${progress}, running in ${threadTitle}`}
+          title={`${run.name} · ${progress}`}
           onClick={onOpen}
         >
           <span className="sb-glyph" aria-hidden="true">
