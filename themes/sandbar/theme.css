@@ -139,10 +139,13 @@
 
 /*
  * The right-panel toggle is pinned 10px from the top. Line it up with the
- * top row of buttons, which starts 30px above the middle of the bar.
+ * pane headers' buttons, which are centred in the bar. It's 28px tall. In
+ * the Mac app 0.47 also nudges it towards the window buttons, which with
+ * the taller bar left it partly off the top of the window (27 Oct 2026).
  */
 [data-testid="split-workspace-panel-toggle"] {
-  top: calc(var(--bb-app-chrome-row-height) / 2 - 30px);
+  top: calc(var(--bb-app-chrome-row-height) / 2 - 14px);
+  transform: none;
 }
 
 /*
@@ -157,7 +160,9 @@
  * toggle sits in the top-right corner with the pane under it keeping room
  * for it. The one new thing kept is bb's icon rail down the left. bb only
  * marks the layout data-framed in the desktop app, so the browser is
- * unchanged. To undo, delete this block and re-run `bb theme set sandbar`.
+ * unchanged. Reworked for 0.46.1 (15 Oct 2026), which grouped the arrows
+ * with the sidebar toggle, so hiding the arrows hid the toggle too. To undo,
+ * delete this block and re-run `bb theme set sandbar`.
  */
 [data-testid="app-layout-root"][data-framed] {
   --bb-window-frame-top: 0px;
@@ -176,6 +181,29 @@
     border-radius: 0;
   }
 
+  /*
+   * 0.47 (27 Oct 2026) moved each pane's header up into the window's title
+   * bar. The frame's top padding makes a band as tall as the bar, the panes
+   * are pulled up into it with a negative margin, and a mask cuts the card
+   * shape below it. With the padding at 0 above, the pull lifted every
+   * header off the top of the window. This takes the pull and the card
+   * shape off. The headers' own look is in "Pane headers in the frame",
+   * just after this block.
+   */
+  > [data-sidebar="inset"] {
+    margin-top: 0;
+    height: 100%;
+    padding: 0;
+    mask-image: none;
+    clip-path: none;
+    background-color: var(--background);
+
+    &::before,
+    &::after {
+      display: none;
+    }
+  }
+
   /* The rail's icons start below the top row, as they do in the browser. */
   [data-testid="app-nav-rail"] {
     padding-top: var(--bb-app-chrome-row-height);
@@ -188,10 +216,13 @@
   /*
    * The bar only holds its buttons now. Clicks go through it everywhere
    * else, and it isn't a window drag area, so the pane headers under it
-   * still work in the Mac app.
+   * still work in the Mac app. 0.46.1 sizes the bar at 2.5rem from its own
+   * variable, so it's set back to the top row's height here, which keeps
+   * the sidebar toggle centred on the row as it was in 0.46.0.
    */
   > [data-testid="app-window-title-bar"] {
     right: auto;
+    height: var(--bb-app-chrome-row-height);
     pointer-events: none;
     app-region: no-drag;
     -webkit-app-region: no-drag;
@@ -200,8 +231,21 @@
       pointer-events: auto;
     }
 
+    /*
+     * 0.46.1 (15 Oct 2026) puts the arrows and the sidebar toggle in one
+     * group and nudges it down with a transform. A transform would hold the
+     * arrows inside the group instead of letting them move next to the
+     * sidebar, so the nudge becomes an offset. 0.47 lifts the sidebar's
+     * top row by 1px, so the toggle sits 1px up as well, level with "New
+     * thread" and the arrows (27 Oct 2026; until then it sat 2px down).
+     */
+    > :has(button[aria-label^="Toggle sidebar"]) {
+      transform: none;
+      top: -1px;
+    }
+
     /* The arrows, at the right of the sidebar's top row. */
-    > :first-child {
+    :has(> button[aria-label="Go back"]) {
       position: fixed;
       position-anchor: --bb-sidebar-top;
       top: anchor(top);
@@ -218,8 +262,11 @@
     }
   }
 
-  /* With the sidebar hidden, the arrows go with it, as they did in 0.45. */
-  > [data-collapsible="rail"] ~ [data-testid="app-window-title-bar"] > :first-child {
+  /*
+   * With the sidebar hidden, the arrows go with it, as they did in 0.45.
+   * The sidebar toggle stays, so there's always a way to bring it back.
+   */
+  > [data-collapsible="rail"] ~ [data-testid="app-window-title-bar"] :has(> button[aria-label="Go back"]) {
     display: none;
   }
 
@@ -236,55 +283,70 @@
     &.flex-col > :first-child,
     &.flex-row > :last-child > [data-split-resize-grid-root].flex-col > :first-child,
     &.flex-col > :first-child > [data-split-resize-grid-root].flex-row > :last-child {
-      > [data-split-pane-id] > :first-child > header [data-testid="app-page-header-content-row"] {
+      > [data-split-pane-id] > * > header [data-testid="app-page-header-content-row"] {
         padding-right: 2rem;
       }
     }
   }
 
   /*
-   * In a window that isn't full screen, bb moves the toggle 84px right to
-   * clear the window buttons. The sidebar's top row makes room for it, and
-   * so does the top-left pane while the sidebar is hidden.
+   * In a window that isn't full screen, bb moves the toggle right to clear
+   * the window buttons: 0.47 puts it just past the space it keeps for
+   * them. The sidebar's top row makes room for it, so "New thread" starts
+   * just after the toggle. 0.47 renamed that row, which put the toggle on
+   * top of "New thread" until this was updated (27 Oct 2026). With the
+   * sidebar hidden, 0.47 pads the top-left pane itself, so the theme's own
+   * rule for that has gone.
    */
-  > [data-collapsible]:has(~ [data-testid="app-window-title-bar"][class~="pl-[84px]"]) [data-testid="nav-rail-header"] {
-    padding-left: 3.75rem;
-  }
-
-  > [data-collapsible="rail"] ~ [data-sidebar="inset"]:has(~ [data-testid="app-window-title-bar"][class~="pl-[84px]"]) {
-    [data-panel-id="thread-detail-timeline-panel"] > [data-split-pane-id] header [data-testid="app-page-header-content-row"] {
-      padding-left: 3.25rem;
-    }
-
-    [data-panel-id="split-workspace-main-panel"] > * > [data-split-resize-grid-root] {
-      &.flex-row > :first-child,
-      &.flex-col > :first-child,
-      &.flex-row > :first-child > [data-split-resize-grid-root].flex-col > :first-child,
-      &.flex-col > :first-child > [data-split-resize-grid-root].flex-row > :first-child {
-        > [data-split-pane-id] > :first-child > header [data-testid="app-page-header-content-row"] {
-          padding-left: 3.25rem;
-        }
-      }
-    }
+  > [data-collapsible]:has(~ [data-testid="app-window-title-bar"][class~="pl-(--bb-macos-traffic-light-reserve)"]) [data-testid="app-sidebar-top-reserve-row"] {
+    padding-left: calc(var(--bb-macos-traffic-light-reserve) - 1rem);
   }
 
   /* "New thread" stops short of the arrows, so they don't sit on top of it. */
-  [data-testid="nav-rail-header"] {
+  [data-testid="app-sidebar-top-reserve-row"] {
     padding-right: 4.25rem;
   }
+}
+
+/*
+ * Pane headers in the frame (bb 0.47, 27 Oct 2026). Inside the frame, 0.47
+ * draws each pane's header as part of the window's title bar: 44px tall,
+ * no background or line underneath, and the title nudged up to line up
+ * with the window buttons. This gives them back the look they have outside
+ * the frame: the top row's height, the scrim background, the line
+ * underneath and the title centred in the row. The :where() keeps these
+ * rules weak enough for the Pane attention tint further down to win. To
+ * undo, delete this block and the 0.47 rule in "No frame", then re-run
+ * `bb theme set sandbar`.
+ */
+:where([data-testid="app-layout-root"][data-framed]) header:has(> [data-testid="app-page-header-content-row"]) {
+  box-sizing: border-box;
+  height: var(--bb-app-chrome-row-height);
+  padding-bottom: 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--border-seam-vertical) 60%, transparent);
+  background-color: var(--surface-scrim);
+  --bb-macos-chrome-control-y: 0px;
+}
+
+:where([data-testid="app-layout-root"][data-framed]) [data-testid="app-page-header-content-row"] {
+  height: var(--bb-app-chrome-row-height);
 }
 
 /*
  * The rail darker (12 Oct 2026), so it stands apart from the thread list
  * and the pane headers next to it. In light mode it's mostly the sidebar's
  * border colour with a little of the sidebar mint; in dark mode, the sidebar
- * navy with some black. Lower the percentage to go darker still. To undo,
- * delete this block and re-run `bb theme set sandbar`.
+ * navy with some black. Lower the percentage to go darker still. bb 0.47
+ * has 10px of padding above the rail inside the navigation column, so the
+ * column is painted too, or that strip shows the sidebar's colour (27 Oct
+ * 2026). To undo, delete this block and re-run `bb theme set sandbar`.
  */
+[data-testid="sidebar-navigation-rail"],
 [data-testid="app-nav-rail"] {
   background: color-mix(in oklab, var(--sidebar) 25%, var(--sidebar-border));
 }
 
+.dark [data-testid="sidebar-navigation-rail"],
 .dark [data-testid="app-nav-rail"] {
   background: color-mix(in oklab, var(--sidebar) 75%, black);
 }
@@ -310,11 +372,11 @@
   --bb-pane-attention-dot: 6px;
   --bb-pane-attention-ring: 0px;
 
-  > :first-child > header {
+  > * > header {
     background-color: color-mix(in oklab, var(--bb-pane-attention) var(--bb-pane-attention-tint), var(--surface-scrim));
   }
 
-  > :first-child > header::after {
+  > * > header::after {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
@@ -371,6 +433,28 @@
 
 body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delayed-open"], [data-state="instant-open"]) > [data-usage-meter="rings"]) > [data-radix-popper-content-wrapper]:has(> :is([data-state="delayed-open"], [data-state="instant-open"])) {
   display: none;
+}
+
+/*
+ * Context gauge in narrow panes (15 Oct 2026). When a composer is 480px
+ * wide or less, or its pane is 416px tall or less, bb 0.46 switches it to
+ * compact mode and collapses the row under the input to nothing. That row
+ * holds the project, environment, permission mode and the context-window
+ * ring, so with several panes side by side the ring disappears from every
+ * pane. This keeps the row open, focused pane or not, on any window 768px
+ * or wider (below that bb uses its mobile layout, which handles the row
+ * itself). The selector matches bb's own compact rule exactly, so it wins
+ * by coming later. To undo, delete this block and re-run
+ * `bb theme set sandbar`.
+ */
+@media (min-width: 768px) {
+  [data-follow-up-composer]:not([data-follow-up-composer-footer-visible]) [data-follow-up-composer-footer] {
+    opacity: 1;
+    pointer-events: auto;
+    min-height: 1.5rem;
+    max-height: 1.5rem;
+    margin-top: 0.25rem;
+  }
 }
 
 /*
@@ -471,7 +555,7 @@ body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delay
          * strip width each message came out thousands of pixels tall, so the
          * pane could open blank or part way up the thread (9 Oct 2026).
          */
-        [data-split-pane-id] > :first-child > :not(header) {
+        [data-split-pane-id] > * > :not(header) {
           content-visibility: hidden;
           width: calc(100cqw - var(--bb-fold-strips) * (var(--bb-slide-strip) + 1px));
         }
@@ -480,7 +564,7 @@ body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delay
          * The header covers the strip and only the title shows. It starts
          * below the top bar, clear of the sidebar and right-panel buttons.
          */
-        [data-split-pane-id] > :first-child > header {
+        [data-split-pane-id] > * > header {
           position: absolute;
           inset: 0;
           height: auto;
@@ -491,7 +575,7 @@ body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delay
           -webkit-app-region: no-drag;
         }
 
-        [data-split-pane-id]:hover > :first-child > header {
+        [data-split-pane-id]:hover > * > header {
           background-image: linear-gradient(var(--state-hover), var(--state-hover));
         }
 
@@ -531,7 +615,7 @@ body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delay
          * Pane attention on a folded strip: the bar runs down the left edge
          * and the title takes the colour. See the Pane attention block above.
          */
-        [data-pane-attention] > :first-child > header::after {
+        [data-pane-attention] > * > header::after {
           inset: 0 auto 0 0;
           width: var(--bb-pane-attention-bar);
           height: auto;
