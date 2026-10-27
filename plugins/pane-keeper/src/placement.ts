@@ -141,6 +141,38 @@ export function planOpen(input: PlanInput): Plan {
   return pane === null ? { kind: "blocked" } : { kind: "replace", pane };
 }
 
+/**
+ * What a person's click on bb's New thread button in the sidebar does. bb
+ * opens New thread over the focused pane on a plain click and beside it on a
+ * Cmd- or Ctrl-click. With a split showing, Pane Keeper swaps those round, so
+ * a plain click does what Cmd+N does.
+ */
+export type ButtonClick =
+  /** Leave the click to bb. */
+  | "bb"
+  /** New thread beside the focused pane, the way Cmd+N opens it. */
+  | "beside"
+  /** New thread over the focused pane: bb's own plain click. */
+  | "over";
+
+export interface ButtonClickInput {
+  /** The `newThreadButton` setting. */
+  enabled: boolean;
+  /** Cmd or Ctrl was held, which is bb's own test for "open in split". */
+  modified: boolean;
+  compact: boolean;
+  panes: readonly Pane[] | null;
+}
+
+export function planButtonClick(input: ButtonClickInput): ButtonClick {
+  const { panes } = input;
+  // The same rule as Cmd+N: one pane or the compact layout keeps bb's own.
+  if (!input.enabled || input.compact || panes === null || panes.length < 2) {
+    return "bb";
+  }
+  return input.modified ? "over" : "beside";
+}
+
 export function parseMemory(raw: string | null): FocusMemory {
   if (raw === null) return EMPTY_MEMORY;
   try {

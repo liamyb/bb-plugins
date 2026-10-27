@@ -1,12 +1,14 @@
-// Pane Keeper: Cmd+N, notification clicks and drafts handed in from outside
-// the app open beside the pane Liam is in, instead of over it.
+// Pane Keeper: Cmd+N, the sidebar's New thread button, notification clicks
+// and drafts handed in from outside the app open beside the pane Liam is in,
+// instead of over it.
 //
 // - Two commands take Cmd+N and Cmd+Shift+O once bb's own New thread lets go
 //   of them (`bb settings keyboard set thread.new disabled`).
 // - An overlay keeps the layout, threads and focus history current, answers
-//   Notifications Pro's open-thread event, and carries the hidden New thread
-//   link the commands click to get bb's split-open (see `openNewThreadInSplit`
-//   in src/keeper.ts).
+//   Notifications Pro's open-thread event, swaps round plain and Cmd-clicks on
+//   the New thread button (`onNewThreadButtonClick`), and carries the hidden
+//   New thread link the commands click to get bb's split-open (see
+//   `openNewThreadInSplit` in src/keeper.ts).
 // - The same overlay takes drafts from `bb pane-keeper draft` (server.ts) and
 //   types each into New thread without sending it (`useDraftDelivery`).
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +16,7 @@ import { toast } from "sonner";
 import {
   definePluginApp,
   experimental_copyToClipboard as copyToClipboard,
+  useBbContext,
   useBbNavigate,
   useComposers,
   useRealtime,
@@ -39,6 +42,7 @@ import {
   OPEN_THREAD_EVENT,
   live,
   newThreadBeside,
+  onNewThreadButtonClick,
   onOpenThreadEvent,
   openDraftBeside,
   parseSettings,
@@ -203,10 +207,15 @@ function KeeperState() {
   const { threads } = useSidebarThreads();
   const navigate = useBbNavigate();
   const { values } = useSettings();
+  const { projectId } = useBbContext();
 
   useEffect(() => {
     live.navigate = navigate;
   }, [navigate]);
+
+  useEffect(() => {
+    live.projectId = projectId;
+  }, [projectId]);
 
   useEffect(() => {
     live.threads = new Map(
@@ -246,8 +255,12 @@ function KeeperState() {
 
   useEffect(() => {
     window.addEventListener(OPEN_THREAD_EVENT, onOpenThreadEvent);
+    // Capture on `window` runs before bb's own click handling, which React
+    // does at its root element.
+    window.addEventListener("click", onNewThreadButtonClick, true);
     return () => {
       window.removeEventListener(OPEN_THREAD_EVENT, onOpenThreadEvent);
+      window.removeEventListener("click", onNewThreadButtonClick, true);
       live.navigate = null;
     };
   }, []);

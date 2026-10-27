@@ -1,9 +1,9 @@
 {
   "name": "bb-plugin-pane-keeper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Cmd+N, notification clicks and drafts handed in from outside bb open beside the pane you're in, instead of over it.",
+  "description": "Cmd+N, the sidebar's New thread button, notification clicks and drafts handed in from outside bb open beside the pane you're in, instead of over it.",
   "license": "MIT",
   "engines": {
     "bb": ">=0.46",
@@ -11,7 +11,7 @@
   },
   "bb": {
     "name": "Pane Keeper",
-    "description": "With a split showing, Cmd+N and Notifications Pro clicks open a new pane to the right instead of replacing the one you're in. At 8 panes it swaps out the one you used least recently. `bb pane-keeper draft` opens New thread beside you with a prompt typed in and not sent.",
+    "description": "With a split showing, Cmd+N, a plain click on New thread and Notifications Pro clicks open a new pane to the right instead of replacing the one you're in. At 8 panes it swaps out the one you used least recently. `bb pane-keeper draft` opens New thread beside you with a prompt typed in and not sent.",
     "branding": {
       "icon": "./assets/icon.svg"
     },

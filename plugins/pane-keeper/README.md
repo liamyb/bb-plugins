@@ -1,8 +1,9 @@
 # Pane Keeper
 
-A small bb plugin for working in split panes. With a split showing, Cmd+N and a Notifications Pro
-click open a new pane to the right of the one you're in, instead of replacing it. bb's own
-rules decide everything else: something that's already open just gets its pane focused.
+A small bb plugin for working in split panes. With a split showing, Cmd+N, a plain click on the
+sidebar's New thread button and a Notifications Pro click open a new pane to the right of the one
+you're in, instead of replacing it. bb's own rules decide everything else: something that's
+already open just gets its pane focused.
 
 With one pane, or in bb's compact layout (under 768px), it stands aside and bb behaves as it
 always has. The exception is a draft from `bb pane-keeper draft`, below, which opens beside a
@@ -14,6 +15,14 @@ single pane too.
   "open New thread in a split", the one behind a Cmd+click on the sidebar's New thread button, then
   selects the current project and focuses the prompt, exactly as bb's New thread does. If a New
   thread pane is already open, bb jumps to it.
+- **The sidebar's New thread button** (new in 0.3.0). bb 0.47 opens New thread over the pane
+  you're in on a plain click and beside it on a Cmd+click. With a split showing, Pane Keeper
+  swaps those round: a plain click opens New thread beside the focused pane, exactly as Cmd+N
+  does (8-pane handling included), and a Cmd+click (Ctrl+click off the Mac) opens it over the
+  focused pane, which is bb's plain click. If a New thread pane is already open, both jump to it.
+  It catches the click on `window` before bb sees it, and only a click you make yourself, so its
+  own hidden-link click (below) goes straight through. Set `newThreadButton` to `false` to keep
+  bb's clicks.
 - **Notification clicks** from Notifications Pro (OS toasts and the in-app centre) open the
   thread with bb's split rules (`useBbNavigate().toThread(id, { split: true })`). This needs a small
   hook in Notifications Pro, which fires `pane-keeper:open-thread` on `window` before it
@@ -77,12 +86,13 @@ one-off toast saying so.
 
 ## Setup
 
-- Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin pane-keeper --tag-prefix pane-keeper/`
+- Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.3.0 --plugin pane-keeper --tag-prefix pane-keeper/`
   (bb builds it and installs its one dependency, zod, itself). Needs bb 0.46 or later, for the
-  SDK's `useBbNavigate()` split rules. A `^0.1.0` install won't update to 0.2.0, because a
-  caret range on 0.x stops at the next minor version, and bb won't install over a plugin that's
-  already there. Run `bb plugin remove pane-keeper`, then the install line with `^0.2.0`.
-  Removing it resets the settings below to their defaults.
+  SDK's `useBbNavigate()` split rules. The New thread button handling is for bb 0.47's button and
+  does nothing on 0.46. A `^0.2.0` install won't update to 0.3.0, because a caret range on 0.x
+  stops at the next minor version, and bb won't install over a plugin that's already there. Run
+  `bb plugin remove pane-keeper`, then the install line with `^0.3.0`. Removing it resets the
+  settings below to their defaults.
 - Shortcuts: `bb settings keyboard set thread.new disabled`. bb's New thread lets go of Cmd+N and
   Cmd+Shift+O, and Pane Keeper's two commands pick them up by themselves. While bb holds them,
   Pane Keeper's defaults stay unbound (bb doesn't let a plugin default take an occupied key).
@@ -95,6 +105,8 @@ one-off toast saying so.
 - Notification clicks back to opening over the focused pane:
   `bb plugin config pane-keeper set notificationClicks false`.
 - At 8 panes, open nothing rather than swap: `bb plugin config pane-keeper set atPaneLimit notice`.
+- The New thread button back to bb's clicks:
+  `bb plugin config pane-keeper set newThreadButton false`.
 - All of it: `bb plugin disable pane-keeper`, then `bb settings keyboard reset thread.new`
   (otherwise Cmd+N does nothing).
 

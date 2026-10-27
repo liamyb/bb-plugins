@@ -6,6 +6,7 @@ import {
   PANE_LIMIT,
   parseMemory,
   pickPaneToReplace,
+  planButtonClick,
   planOpen,
   recordFocus,
   type FocusMemory,
@@ -194,6 +195,22 @@ test("panes without a thread are never chosen, and nothing left means null", () 
   });
   assert.equal(pickPaneToReplace(layout, EMPTY_MEMORY, () => calm)?.paneId, "pane-3");
   assert.equal(pickPaneToReplace(layout, EMPTY_MEMORY, marked), null);
+});
+
+test("a New thread button click is swapped round only with a split showing", () => {
+  const split = { enabled: true, compact: false, panes: panes(3, 2) };
+  assert.equal(planButtonClick({ ...split, modified: false }), "beside");
+  assert.equal(planButtonClick({ ...split, modified: true }), "over");
+  assert.equal(
+    planButtonClick({ ...split, panes: panes(PANE_LIMIT, 1), modified: false }),
+    "beside",
+  );
+  for (const modified of [false, true]) {
+    assert.equal(planButtonClick({ ...split, enabled: false, modified }), "bb");
+    assert.equal(planButtonClick({ ...split, compact: true, modified }), "bb");
+    assert.equal(planButtonClick({ ...split, panes: null, modified }), "bb");
+    assert.equal(planButtonClick({ ...split, panes: panes(1, 1), modified }), "bb");
+  }
 });
 
 test("parseMemory survives junk", () => {

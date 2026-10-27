@@ -80,6 +80,13 @@ export default function paneKeeper(bb: BbPluginApi): void {
       options: ["replace-oldest", "notice"],
       default: "replace-oldest",
     },
+    newThreadButton: {
+      type: "boolean",
+      label: "A plain click on New thread opens beside the focused pane",
+      description:
+        "With a split showing, a plain click on the sidebar's New thread button opens it beside the focused pane, as Cmd+N does, and a Cmd- or Ctrl-click opens it over the focused pane. That's bb's rule swapped round. Off: bb's own clicks.",
+      default: true,
+    },
   });
 
   const kv = bb.storage.kv;

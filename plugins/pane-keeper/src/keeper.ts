@@ -6,6 +6,7 @@ import {
   EMPTY_MEMORY,
   parseMemory,
   pickPaneToReplace,
+  planButtonClick,
   planOpen,
   type FocusMemory,
   type LimitMode,
@@ -46,6 +47,7 @@ export interface Navigate {
 export interface Settings {
   notificationClicks: boolean;
   atPaneLimit: LimitMode;
+  newThreadButton: boolean;
 }
 
 interface ThreadInfo {
@@ -61,13 +63,20 @@ export const live: {
   settings: Settings;
   /** The overlay's hidden link to New thread. See `openNewThreadInSplit`. */
   splitLink: HTMLAnchorElement | null;
+  /** The project in view, which Cmd+N gets from bb's command context. */
+  projectId: string | null;
 } = {
   panes: null,
   memory: readMemory(),
   threads: new Map(),
   navigate: null,
-  settings: { notificationClicks: true, atPaneLimit: "replace-oldest" },
+  settings: {
+    notificationClicks: true,
+    atPaneLimit: "replace-oldest",
+    newThreadButton: true,
+  },
   splitLink: null,
+  projectId: null,
 };
 
 function readMemory(): FocusMemory {
@@ -90,6 +99,7 @@ export function parseSettings(values: Record<string, unknown>): Settings {
   return {
     notificationClicks: values.notificationClicks !== false,
     atPaneLimit: values.atPaneLimit === "notice" ? "notice" : "replace-oldest",
+    newThreadButton: values.newThreadButton !== false,
   };
 }
 
@@ -250,6 +260,61 @@ function openNewThread(
  */
 export function newThreadBeside(projectId: string | null): void {
   if (openNewThread(projectId, {}) === "blocked") sayFull();
+}
+
+// bb's New thread button, which since bb 0.47 comes from its builtin
+// navigation plugin: one in the sidebar's top row, and a row in the "Top
+// list" layout. The top-row one only has an aria-label while bb's own New
+// thread has a shortcut, so it's matched by its text.
+const NEW_THREAD_ROW_BUTTON =
+  '[data-sidebar-navigation-item="__bb__/new-thread"] > button';
+const SIDEBAR_HEADER = '[data-testid="sidebar-header-slot"]';
+
+function newThreadButton(target: EventTarget | null): HTMLButtonElement | null {
+  if (!(target instanceof Element)) return null;
+  const button = target.closest("button");
+  if (button === null) return null;
+  if (button.matches(NEW_THREAD_ROW_BUTTON)) return button;
+  if (button.closest(SIDEBAR_HEADER) === null) return null;
+  const label = button.getAttribute("aria-label") ?? button.textContent ?? "";
+  return label.trim().startsWith("New thread") ? button : null;
+}
+
+/**
+ * A click on the sidebar's New thread button, caught on `window` before bb
+ * sees it. With a split showing, a plain click opens New thread beside the
+ * focused pane, as Cmd+N does, and a Cmd- or Ctrl-click opens it over the
+ * focused pane, which is bb's plain click. That's bb's rule swapped round.
+ * Anything else, and every click that isn't a person's (including Pane
+ * Keeper's own), is left to bb.
+ */
+export function onNewThreadButtonClick(event: MouseEvent): void {
+  if (!event.isTrusted || event.button !== 0) return;
+  const button = newThreadButton(event.target);
+  if (button === null) return;
+  const action = planButtonClick({
+    enabled: live.settings.newThreadButton,
+    modified: event.metaKey || event.ctrlKey,
+    compact: isCompact(),
+    panes: live.panes,
+  });
+  if (action === "bb") return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (action === "beside") {
+    newThreadBeside(live.projectId);
+    return;
+  }
+  // The same button, clicked again with no key held, is bb's own "open over
+  // the focused pane". It isn't trusted, so this handler lets it through.
+  button.dispatchEvent(
+    new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      view: window,
+    }),
+  );
 }
 
 /**
