@@ -191,3 +191,48 @@ export function parseMemory(raw: string | null): FocusMemory {
     return EMPTY_MEMORY;
   }
 }
+
+/**
+ * The thread an in-app link opens, from its href: bb's
+ * `/projects/<project>/threads/<thread>` route, or the shorter
+ * `/threads/<thread>`, either with a `#msg=` anchor or a query. Anything else,
+ * including a link to another site, is null.
+ */
+export function threadIdFromHref(href: string, origin: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(href, origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin) return null;
+  const match = /^(?:\/projects\/[^/]+)?\/threads\/([^/]+)\/?$/.exec(url.pathname);
+  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+}
+
+/**
+ * What a person's click on a link to a thread in a conversation does. bb
+ * opens the thread over the pane the link is in on a plain click, and beside
+ * it on a Cmd- or Ctrl-click, which also just focuses a pane that already
+ * shows it. Pane Keeper makes the plain click do that too.
+ */
+export type LinkClick =
+  /** Leave the click to bb. */
+  | "bb"
+  /** Open the thread beside the pane, or focus the pane already showing it. */
+  | "beside";
+
+export interface LinkClickInput {
+  /** The `threadLinks` setting. */
+  enabled: boolean;
+  /** Cmd, Ctrl, Shift or Alt was held, so bb's own handling stands. */
+  modified: boolean;
+  compact: boolean;
+}
+
+export function planLinkClick(input: LinkClickInput): LinkClick {
+  // Unlike the New thread button this applies with one pane too: the point
+  // is never to lose the conversation the link was in.
+  if (!input.enabled || input.modified || input.compact) return "bb";
+  return "beside";
+}

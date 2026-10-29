@@ -6,8 +6,8 @@ you're in, instead of replacing it. bb's own rules decide everything else: somet
 already open just gets its pane focused.
 
 With one pane, or in bb's compact layout (under 768px), it stands aside and bb behaves as it
-always has. The exception is a draft from `bb pane-keeper draft`, below, which opens beside a
-single pane too.
+always has. The exceptions are a thread link clicked in a chat and a draft from
+`bb pane-keeper draft`, below, which open beside a single pane too.
 
 ## What it does
 
@@ -23,6 +23,15 @@ single pane too.
   It catches the click on `window` before bb sees it, and only a click you make yourself, so its
   own hidden-link click (below) goes straight through. Set `newThreadButton` to `false` to keep
   bb's clicks.
+- **Thread links in a chat** (new in 0.4.0). The chip bb renders for an `@thread` mention, or any
+  link to a thread inside a conversation, opens over the pane it's in on a plain click and
+  beside it on a Cmd+click, which also just focuses a pane already showing that thread. Pane
+  Keeper makes a plain click do the Cmd+click, so following a link never loses the chat it was
+  in. This one applies with a single pane too, and the 8-pane handling below applies. It
+  re-clicks the same link with Cmd held, so a link to a message (`#msg=`) still lands on it.
+  Cmd, Ctrl, Shift and Alt clicks, the compact layout, and links outside the conversation (the
+  sidebar, pane headers, plugin pages) are bb's. Set `threadLinks` to `false` to keep bb's
+  plain click.
 - **Notification clicks** from Notifications Pro (OS toasts and the in-app centre) open the
   thread with bb's split rules (`useBbNavigate().toThread(id, { split: true })`). This needs a small
   hook in Notifications Pro, which fires `pane-keeper:open-thread` on `window` before it
@@ -86,12 +95,12 @@ one-off toast saying so.
 
 ## Setup
 
-- Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.3.0 --plugin pane-keeper --tag-prefix pane-keeper/`
+- Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.4.0 --plugin pane-keeper --tag-prefix pane-keeper/`
   (bb builds it and installs its one dependency, zod, itself). Needs bb 0.46 or later, for the
   SDK's `useBbNavigate()` split rules. The New thread button handling is for bb 0.47's button and
-  does nothing on 0.46. A `^0.2.0` install won't update to 0.3.0, because a caret range on 0.x
+  does nothing on 0.46. A `^0.3.0` install won't update to 0.4.0, because a caret range on 0.x
   stops at the next minor version, and bb won't install over a plugin that's already there. Run
-  `bb plugin remove pane-keeper`, then the install line with `^0.3.0`. Removing it resets the
+  `bb plugin remove pane-keeper`, then the install line with `^0.4.0`. Removing it resets the
   settings below to their defaults.
 - Shortcuts: `bb settings keyboard set thread.new disabled`. bb's New thread lets go of Cmd+N and
   Cmd+Shift+O, and Pane Keeper's two commands pick them up by themselves. While bb holds them,
@@ -107,6 +116,8 @@ one-off toast saying so.
 - At 8 panes, open nothing rather than swap: `bb plugin config pane-keeper set atPaneLimit notice`.
 - The New thread button back to bb's clicks:
   `bb plugin config pane-keeper set newThreadButton false`.
+- Thread links in a chat back to opening over the pane:
+  `bb plugin config pane-keeper set threadLinks false`.
 - All of it: `bb plugin disable pane-keeper`, then `bb settings keyboard reset thread.new`
   (otherwise Cmd+N does nothing).
 

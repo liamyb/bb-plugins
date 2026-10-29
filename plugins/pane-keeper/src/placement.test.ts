@@ -7,8 +7,10 @@ import {
   parseMemory,
   pickPaneToReplace,
   planButtonClick,
+  planLinkClick,
   planOpen,
   recordFocus,
+  threadIdFromHref,
   type FocusMemory,
   type Pane,
   type PaneFacts,
@@ -225,4 +227,44 @@ test("parseMemory survives junk", () => {
     parseMemory(JSON.stringify({ at: { "pane-1": 5 }, focused: "pane-1" })),
     { at: { "pane-1": 5 }, focused: "pane-1" },
   );
+});
+
+const ORIGIN = "http://127.0.0.1:38886";
+
+test("a thread link's href gives its thread", () => {
+  assert.equal(
+    threadIdFromHref("/projects/proj_1/threads/thr_abc", ORIGIN),
+    "thr_abc",
+  );
+  assert.equal(threadIdFromHref("/threads/thr_abc", ORIGIN), "thr_abc");
+  assert.equal(
+    threadIdFromHref("/projects/proj_1/threads/thr_abc#msg=42", ORIGIN),
+    "thr_abc",
+  );
+  assert.equal(
+    threadIdFromHref(`${ORIGIN}/projects/proj_1/threads/thr_abc?x=1`, ORIGIN),
+    "thr_abc",
+  );
+});
+
+test("other links aren't thread links", () => {
+  assert.equal(threadIdFromHref("/", ORIGIN), null);
+  assert.equal(threadIdFromHref("/projects/proj_1", ORIGIN), null);
+  assert.equal(threadIdFromHref("/projects/proj_1/threads/thr_abc/files", ORIGIN), null);
+  assert.equal(threadIdFromHref("/plugins/usage-meter/usage", ORIGIN), null);
+  assert.equal(
+    threadIdFromHref("https://example.com/projects/proj_1/threads/thr_abc", ORIGIN),
+    null,
+  );
+  assert.equal(threadIdFromHref("http://[bad", ORIGIN), null);
+});
+
+test("a plain click on a thread link opens beside, one pane included", () => {
+  assert.equal(planLinkClick({ enabled: true, modified: false, compact: false }), "beside");
+});
+
+test("modified clicks, compact and the setting off are left to bb", () => {
+  assert.equal(planLinkClick({ enabled: true, modified: true, compact: false }), "bb");
+  assert.equal(planLinkClick({ enabled: true, modified: false, compact: true }), "bb");
+  assert.equal(planLinkClick({ enabled: false, modified: false, compact: false }), "bb");
 });

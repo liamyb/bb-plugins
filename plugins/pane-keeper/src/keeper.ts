@@ -7,7 +7,9 @@ import {
   parseMemory,
   pickPaneToReplace,
   planButtonClick,
+  planLinkClick,
   planOpen,
+  threadIdFromHref,
   type FocusMemory,
   type LimitMode,
   type Pane,
@@ -48,6 +50,7 @@ export interface Settings {
   notificationClicks: boolean;
   atPaneLimit: LimitMode;
   newThreadButton: boolean;
+  threadLinks: boolean;
 }
 
 interface ThreadInfo {
@@ -74,6 +77,7 @@ export const live: {
     notificationClicks: true,
     atPaneLimit: "replace-oldest",
     newThreadButton: true,
+    threadLinks: true,
   },
   splitLink: null,
   projectId: null,
@@ -100,6 +104,7 @@ export function parseSettings(values: Record<string, unknown>): Settings {
     notificationClicks: values.notificationClicks !== false,
     atPaneLimit: values.atPaneLimit === "notice" ? "notice" : "replace-oldest",
     newThreadButton: values.newThreadButton !== false,
+    threadLinks: values.threadLinks !== false,
   };
 }
 
@@ -143,21 +148,16 @@ function plan(alreadyOpen: boolean, splitSinglePane: boolean): Plan {
 }
 
 /**
- * bb's split-open for New thread. The SDK has had no call for it since bb
- * 0.46, but bb wraps every plugin's UI in a click handler that treats a Cmd-
- * or Ctrl-click on an in-app link as "open in split", which is the same
- * split-open the sidebar's New thread button uses, and "/" is the New thread
- * route. So the overlay renders a hidden link to "/" and this clicks it with
- * Cmd held. bb then adds a pane to the right of the focused one, focuses a
- * New thread pane that's already open, or at 8 panes replaces the focused
- * one.
+ * Clicks an in-app link with Cmd held, which bb reads as "open in split": a
+ * pane to the right of the focused one, or focus the pane that already shows
+ * it, or at 8 panes replace the focused one. Thread links in a conversation
+ * handle that themselves, and bb wraps every plugin's UI in a handler that
+ * does the same for links inside it.
  *
  * Returns false when bb didn't take the click, and stops the browser
  * following the link in that case.
  */
-function openNewThreadInSplit(): boolean {
-  const link = live.splitLink;
-  if (link === null || !link.isConnected) return false;
+function clickWithCmd(link: HTMLAnchorElement): boolean {
   let taken = false;
   // React handles the click at bb's root element, so a listener on `window`
   // sees it after bb has.
@@ -180,6 +180,19 @@ function openNewThreadInSplit(): boolean {
     window.removeEventListener("click", settle);
   }
   return taken;
+}
+
+/**
+ * bb's split-open for New thread. The SDK has had no call for it since bb
+ * 0.46, so the overlay renders a hidden link to "/", the New thread route,
+ * and this Cmd-clicks it (see `clickWithCmd`). bb then adds a pane to the
+ * right of the focused one, focuses a New thread pane that's already open, or
+ * at 8 panes replaces the focused one.
+ */
+function openNewThreadInSplit(): boolean {
+  const link = live.splitLink;
+  if (link === null || !link.isConnected) return false;
+  return clickWithCmd(link);
 }
 
 function titleOf(threadId: string): string {
@@ -315,6 +328,70 @@ export function onNewThreadButtonClick(event: MouseEvent): void {
       view: window,
     }),
   );
+}
+
+// A thread link in a conversation: the chip bb renders for an @thread
+// mention, or a plain link to a thread. Only the timeline, so the sidebar,
+// pane headers and plugin pages keep bb's clicks.
+const CONVERSATION = "[data-timeline-items]";
+
+function threadLink(
+  target: EventTarget | null,
+): { link: HTMLAnchorElement; threadId: string } | null {
+  if (!(target instanceof Element)) return null;
+  const link = target.closest("a[href]");
+  if (!(link instanceof HTMLAnchorElement)) return null;
+  if (link.closest(CONVERSATION) === null) return null;
+  const opensElsewhere = link.getAttribute("target");
+  if (opensElsewhere !== null && opensElsewhere !== "" && opensElsewhere !== "_self") {
+    return null;
+  }
+  const threadId = threadIdFromHref(link.getAttribute("href") ?? "", window.location.origin);
+  return threadId === null ? null : { link, threadId };
+}
+
+/**
+ * A click on a thread link in a conversation, caught on `window` before bb
+ * sees it. A plain click opens the thread beside the pane the link is in, or
+ * focuses the pane already showing it, which is what bb does on a Cmd-click.
+ * That includes a single pane, so the conversation is never navigated away.
+ * At 8 panes the usual swap applies. Modified clicks, the compact layout and
+ * every click that isn't a person's (including Pane Keeper's own Cmd-click)
+ * are left to bb.
+ */
+export function onThreadLinkClick(event: MouseEvent): void {
+  if (!event.isTrusted || event.button !== 0 || event.defaultPrevented) return;
+  const found = threadLink(event.target);
+  if (found === null) return;
+  const action = planLinkClick({
+    enabled: live.settings.threadLinks,
+    modified: event.metaKey || event.ctrlKey || event.shiftKey || event.altKey,
+    compact: isCompact(),
+  });
+  const navigate = live.navigate;
+  if (action === "bb" || navigate === null) return;
+  const { link, threadId } = found;
+  // With nothing split, the one pane shows whatever the address says.
+  const alreadyOpen =
+    live.panes === null
+      ? threadIdFromHref(window.location.pathname, window.location.origin) === threadId
+      : live.panes.some((pane) => pane.threadId === threadId);
+  const decision = plan(alreadyOpen, true);
+  // A link to the thread it's in, with one pane: bb's click just scrolls.
+  if (decision.kind === "default") return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (decision.kind === "blocked") {
+    sayFull();
+    return;
+  }
+  // At the limit bb replaces the focused pane, so focus the one to lose first.
+  if (decision.kind === "replace") {
+    navigate.toThread(decision.pane.threadId, { split: true });
+  }
+  // bb's own Cmd-click on the same link keeps any #msg= anchor in it.
+  if (!clickWithCmd(link)) navigate.toThread(threadId, { split: true });
+  if (decision.kind === "replace") sayReplaced(decision.pane);
 }
 
 /**

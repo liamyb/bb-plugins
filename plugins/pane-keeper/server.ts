@@ -87,6 +87,13 @@ export default function paneKeeper(bb: BbPluginApi): void {
         "With a split showing, a plain click on the sidebar's New thread button opens it beside the focused pane, as Cmd+N does, and a Cmd- or Ctrl-click opens it over the focused pane. That's bb's rule swapped round. Off: bb's own clicks.",
       default: true,
     },
+    threadLinks: {
+      type: "boolean",
+      label: "A plain click on a thread link in a chat opens beside it",
+      description:
+        "A plain click on a thread chip (an @thread mention) or a thread link in a conversation opens that thread beside the pane it's in, or focuses the pane already showing it, as bb's Cmd-click does. One pane included; not in the compact layout. Cmd, Ctrl, Shift and Alt clicks are bb's. Off: a plain click opens over the pane, as in bb.",
+      default: true,
+    },
   });
 
   const kv = bb.storage.kv;
