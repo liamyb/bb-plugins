@@ -149,6 +149,35 @@
 }
 
 /*
+ * With the right panel open, the panel has its own toggle in its 44px top
+ * bar, and in the Mac app bb draws this one exactly on top of it. Moving
+ * this one down to the middle of the taller bar showed them both, one above
+ * the other, so while the panel's open it goes back over the panel's own
+ * (28 Oct 2026). bb sizes that bar from the window buttons, so this follows
+ * it.
+ */
+[data-testid="app-layout-root"][data-framed] [data-testid="split-workspace-panel-toggle"]:has(> button[aria-expanded="true"]) {
+  top: calc(var(--bb-window-title-bar-height) / 2 - 14px);
+}
+
+/*
+ * The home page has a right-panel toggle of its own, pinned 10px from the
+ * top (6px on the phone), while the sidebar button is centred in the
+ * taller bar. On the phone it sat 24px higher than the sidebar button, and
+ * in the Mac app it was half off the top of the window. This centres it in
+ * the bar as well, below the notch on the phone (28 Oct 2026). On the phone
+ * it sits straight under main; elsewhere it's in the page's content. In
+ * the Mac app the home page's drag strip has a no-drag cutout cut to the
+ * toggle's old spot, and without it the toggle can't be clicked, so the
+ * cutout moves with it.
+ */
+:is(main, [data-pane-content]) > :has(> button[aria-label*="right panel"]),
+[data-testid="root-compose-drag-strip-toggle-cutout"] {
+  top: calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) / 2);
+  transform: translateY(-50%);
+}
+
+/*
  * No frame (bb 0.46.0, 12 Oct 2026). 0.46 put the Mac app in a frame: a bar
  * across the top with the window buttons, the arrows, the sidebar toggle
  * and the right-panel toggle, and the sidebar and panes in rounded cards
@@ -273,9 +302,28 @@
   /*
    * The pane in the top-right corner keeps room for the right-panel toggle.
    * A thread on its own sits in a different panel, so it gets the first rule.
+   *
+   * That pane's header is a window drag area, and the Mac app goes by the
+   * page's order, not what's on top: the later of a drag and a no-drag area
+   * wins. The header comes after the toggle, so the toggle took no clicks or
+   * hover while it sat over the header (28 Oct 2026). The ::after is a
+   * no-drag patch at the end of the header, under the toggle, and nothing
+   * you can see.
    */
   [data-panel-id="thread-detail-timeline-panel"] > [data-split-pane-id] header [data-testid="app-page-header-content-row"] {
     padding-right: 2rem;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: -1rem;
+      bottom: 0;
+      width: 3rem;
+      pointer-events: none;
+      app-region: no-drag;
+      -webkit-app-region: no-drag;
+    }
   }
 
   [data-panel-id="split-workspace-main-panel"] > * > [data-split-resize-grid-root] {
@@ -285,6 +333,18 @@
     &.flex-col > :first-child > [data-split-resize-grid-root].flex-row > :last-child {
       > [data-split-pane-id] > * > header [data-testid="app-page-header-content-row"] {
         padding-right: 2rem;
+
+        &::after {
+          content: "";
+          position: absolute;
+          top: 0;
+          right: -1rem;
+          bottom: 0;
+          width: 3rem;
+          pointer-events: none;
+          app-region: no-drag;
+          -webkit-app-region: no-drag;
+        }
       }
     }
   }
