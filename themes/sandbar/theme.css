@@ -414,6 +414,48 @@
 }
 
 /*
+ * Pane families (2 Nov 2026). The Pane Attention plugin (0.3.0) sets
+ * data-pane-family on a split pane: "child" on a thread that has a parent,
+ * "parent" on a top-level thread while any of its descendants is open in
+ * another pane. It also sets --bb-pane-family-hue, taken from the family's
+ * top thread with the same hash as Sidebar Pro's thread discs, so a family
+ * matches the disc beside its top thread in the sidebar. A family's panes
+ * share a tint and a bar along the foot of the header; on a folded strip the
+ * bar runs down the right edge, clear of the attention bar on the left. A
+ * child's header also gets the plugin's "↳ parent" button, which takes over
+ * from Sidebar Pro's parent chip in a split. Plain panes are untouched. To
+ * undo, delete this block and the rules marked "Pane families on a folded
+ * strip" in the sliding panes block, then re-run `bb theme set sandbar`, or
+ * `bb plugin config pane-attention set families false`.
+ */
+[data-pane-family] {
+  --bb-pane-family: oklch(0.72 0.13 var(--bb-pane-family-hue));
+  --bb-pane-family-tint: 30%;
+  --bb-pane-family-bar: 3px;
+  --bb-pane-family-text: oklch(0.48 0.12 var(--bb-pane-family-hue));
+
+  > * > header {
+    box-shadow:
+      inset 0 calc(-1 * var(--bb-pane-family-bar)) 0 var(--bb-pane-family),
+      inset 0 0 0 100vmax color-mix(in oklab, var(--bb-pane-family) var(--bb-pane-family-tint), transparent);
+  }
+
+  [data-pane-family-label] {
+    color: var(--bb-pane-family-text);
+    font-weight: 500;
+  }
+}
+
+.dark [data-pane-family] {
+  --bb-pane-family-tint: 30%;
+  --bb-pane-family-text: oklch(0.84 0.1 var(--bb-pane-family-hue));
+}
+
+[data-pane-family="child"] [data-thread-header-workflow-actions] [aria-label="Parent thread"] {
+  display: none;
+}
+
+/*
  * Usage in the rail (12 Oct 2026). With the rail-rings patch
  * (patches/usage-meter-rail-rings.patch in github.com/liamyb/bb-plugins),
  * the Usage Meter plugin draws its rings on the Usage icon in bb's rail,
@@ -623,6 +665,21 @@ body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delay
 
         [data-pane-attention] [data-testid="app-page-header-content-row"] > :first-child {
           color: var(--bb-pane-attention-text);
+        }
+
+        /*
+         * Pane families on a folded strip: the tint fills the strip and the
+         * bar runs down the right edge. The label doesn't fit, so it goes.
+         * See the Pane families block above.
+         */
+        [data-pane-family] > * > header {
+          box-shadow:
+            inset calc(-1 * var(--bb-pane-family-bar)) 0 0 var(--bb-pane-family),
+            inset 0 0 0 100vmax color-mix(in oklab, var(--bb-pane-family) var(--bb-pane-family-tint), transparent);
+        }
+
+        [data-pane-family-label] {
+          display: none;
         }
       }
     }

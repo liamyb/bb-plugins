@@ -48,14 +48,40 @@ easing the strips between widths.
 `npm test` covers the geometry in `src/blade-geometry.ts`, including going back half way through
 a switch.
 
+## Thread families
+
+Since 0.3.0 it also shows which split panes belong together. A child thread's pane gets
+`data-pane-family="child"`, and so does a grandchild. A top-level thread gets
+`data-pane-family="parent"` only while one of its descendants is open in another pane, so a
+parent with nothing of its own open, and a thread with no family, look exactly as before. Each
+marked pane also gets `--bb-pane-family-hue`, taken from the family's top thread with the same
+hash Sidebar Pro uses for its thread discs, so the colour is the same after a reload, in every
+window, and matches the disc beside that thread in the sidebar.
+
+A child's header gets a "↳ parent title" button after the thread menu. Clicking it calls
+`useBbNavigate().toThread(parent, { split: true })`: bb focuses the parent's pane if it's open,
+and otherwise opens it to the right of the child (at bb's 8-pane cap, bb replaces the focused
+pane). Archived threads aren't in the sidebar's list, so the plugin fetches any it needs once
+through `useSdk().threads.get`.
+
+As with the other marks, the plugin only sets attributes and the button. The Sandbar theme draws
+the tint, a bar along the foot of the header (down the right edge of a folded strip, clear of the
+attention bar on the left), the button's colour, and hides Sidebar Pro's parent chip in a child's
+pane so the parent isn't named twice. Under another theme the button still shows, uncoloured.
+
+Two hashes can land close together, so two families can now and then get similar colours. That's
+the price of a colour that never moves. The pure rules are in `src/families.ts`, with tests.
+
 ## Install, update, turn off
 
 It needs no `npm install`: the build only uses the SDK that bb itself provides.
 
-- Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin pane-attention --tag-prefix pane-attention/`
+- Install: `bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.3.0 --plugin pane-attention --tag-prefix pane-attention/`
   (bb builds it).
 - Working from a clone: `bb plugin install <path to plugins/pane-attention> --yes`, then
   `bb plugin reload pane-attention` after each edit.
+- Families only: `bb plugin config pane-attention set families false` (back on:
+  `bb plugin config pane-attention unset families`). It applies to open windows straight away.
 - Turn off for now: `bb plugin disable pane-attention`. Back on: `bb plugin enable pane-attention`.
 - Remove: `bb plugin remove pane-attention --yes`.
 

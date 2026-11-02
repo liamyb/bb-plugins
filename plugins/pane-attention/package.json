@@ -1,9 +1,9 @@
 {
   "name": "bb-plugin-pane-attention",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Marks an unfocused split pane whose thread finished a turn, or is waiting on you, and slides folded panes like Xbox 360 blades.",
+  "description": "Marks an unfocused split pane whose thread finished a turn, or is waiting on you, colours thread families across split panes, and slides folded panes like Xbox 360 blades.",
   "license": "MIT",
   "engines": {
     "bb": ">=0.44",
@@ -11,7 +11,7 @@
   },
   "bb": {
     "name": "Pane Attention",
-    "description": "Marks unfocused split panes whose thread finished a turn, or is waiting on you, and plays the blade slide between folded panes. A theme draws both.",
+    "description": "Marks unfocused split panes whose thread finished a turn, or is waiting on you, gives a parent and its children's panes a shared colour with a \"↳ parent\" button on each child, and plays the blade slide between folded panes. A theme draws the colours.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
