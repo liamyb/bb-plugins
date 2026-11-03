@@ -3,7 +3,9 @@
 A compact view of the chats you've got going in bb. It lists the threads open in your split
 panes, in any bb window, with a state word against each one (Needs you, Working, Done, Idle),
 and clicking a row slides bb's own chat open in place so you can read and reply without leaving
-the view. A New chat button starts one on your project checkout.
+the view. A Waiting view gathers every thread that's waiting on you, in every section, and the
+rail icon counts the ones asking you or with a reply. A New chat button starts one on your
+project checkout.
 
 It's made for a small second bb window: Cmd+Shift+N for a new window, click the Switchboard
 icon in the rail, and size it to about 500 by 800. It works as a page in the main window too,
@@ -37,10 +39,58 @@ back, from anywhere.
   own, so clicking its line opens the thread that started it.
 - **The order.** Needs you first, then Working, then Done, then the rest by most recent
   attention. Children sort the same way under their parent.
-- **All threads.** The toggle at the top shows every active thread instead, for when nothing's
-  open or the main window is closed.
+- **Three views.** The switch at the top picks Panes (the chats open in panes, as above),
+  Waiting (below) or All (every active thread, for when nothing's open or the main window is
+  closed). The choice is kept for every window.
 
 Hidden helper threads never show, and neither do archived ones.
+
+## Waiting
+
+When work gets routed to the thread that owns it, replies land all over the sidebar, and bb's
+unread dots are easy to miss across dozens of threads. The Waiting view lists every top-level
+thread that needs a look, from bb's own state, with no agent turns:
+
+- **Asking you:** a pending question or approval, a queued message that didn't send, or a
+  failed turn. A child thread shows here, under its parent's name, while it's waiting for an
+  answer. Children show nowhere else, since their parent passes on what they find.
+- **Replies:** a thread with a finished turn you haven't read, where at least one of those
+  turns was yours: you sent the message, a child reported back, or a thread in one of the
+  `relaySections` passed on something you asked (the front desk forwards your messages word for
+  word, so its hand-offs count as yours).
+- **FYI:** the same, but every one of those turns came from another thread or an automation,
+  like a "noted" reply to a hand-off. The second line says who sent it. FYI is never hidden,
+  because a hand-off can still turn up something you need.
+- **Working:** a thread that's busy, with its workflow lines under it. The second line says
+  who it's working for when that's another thread.
+
+Each row has the thread's section on its second line, and how long ago it last finished.
+Clicking a row opens it in the slide and marks it read; it keeps its place until you close the
+slide. "Open in a pane" from the row menu works as everywhere else.
+
+**What "haven't read" means.** bb's own unread state, plus one case bb can't see: bb marks any
+thread showing in a split pane read the moment it finishes, focused or not. So each window's
+overlay remembers what the threads in its panes were doing, and a thread that finishes while
+you aren't looking at its pane (it's not the focused pane, or the window itself isn't focused)
+is reported to the server as finished. Focusing that pane, or opening the thread from
+Switchboard, clears it. These are Pane Attention's rules, with the window's own focus added.
+
+**Who started a turn** comes from the thread's event log: bb records each message's initiator
+(you, another thread with its id, or a child's "completed" notice), and an automation's run
+starts with a `[bb automation` envelope. Which turns you haven't read comes from the same log's
+`turn/completed` events against the time you last read the thread. The page reads up to 24 of
+those events per thread, only for threads that are unread or busy, and again only when the
+thread's attention time moves.
+
+**Today's asks.** Under the groups, if the front desk's ledger for today exists
+(`askLedgerFolder`, one JSON line per ask with `time`, `ask` and `thread`), a fold-away list
+of what it was asked today, newest first, with where each ask's thread is now: Asking you,
+Reply, FYI, Working, Read or Archived. It's re-read every minute while the view shows.
+
+**The rail badge.** Switchboard's rail icon shows the number of threads asking you plus
+replies, amber while any is asking, with the breakdown in its tooltip. It's worked out in every
+window from the same rules, so it's there whether or not the page is open. `railBadge` turns
+it off.
 
 ## The slide
 
@@ -108,6 +158,9 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `newChatProjectId` | `proj_m7g3w6c5r8` | The project the New chat composer starts on. Set it to yours (`bb project list`), or empty for the composer's own choice |
 | `newChatEnvironmentId` | `env_82jgfihfwx` | The environment the New chat composer starts on, normally your project checkout (`bb environment list --project <id>`). Empty for the composer's own choice |
 | `paneReportTtlSeconds` | `120` | How long a window's pane report counts after its last heartbeat (10 to 600) |
+| `relaySections` | `Front desk` | Section names or ids, comma-separated, whose threads pass on your asks: a reply to a turn one of them started counts as a reply, not FYI. Empty: every turn another thread starts is FYI |
+| `askLedgerFolder` | `automation/front-desk/ledger` | Where the front desk's daily ledger lives (`<YYYY-MM-DD>.jsonl`). A relative path is read from the `newChatEnvironmentId` checkout. Empty: no Today's asks |
+| `railBadge` | `true` | The count of threads asking you or with a reply on the rail icon |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.
@@ -117,7 +170,7 @@ in Settings.
 - Install from a clone: `bb plugin install <path to plugins/switchboard> --yes`, then
   `bb plugin reload switchboard` after each edit. bb builds it itself, and the path install ran
   here with no `npm install` in the folder (its one dependency, zod, resolves from bb). A git
-  install installs zod itself. Needs bb 0.46 or later.
+  install installs zod itself. Needs bb 0.48 or later (the rail badge and the read calls).
 - The rail icon: bb's rail only shows the panels in `sidebar.visiblePluginPanels`. If
   Switchboard isn't there, add `switchboard/switchboard` to that list with
   `bb settings ui set sidebar.visiblePluginPanels '[...]'`, or reset the setting to show every
@@ -127,6 +180,7 @@ in Settings.
 
 ## Tests
 
-`npm test` runs `src/panes.test.ts` and `src/current.test.ts` on Node's own test runner (Node
-23.6 or later). The pane and list rules are pure; `app.tsx` and `server.ts` are the bb glue.
+`npm test` runs `src/panes.test.ts`, `src/current.test.ts` and `src/waiting.test.ts` on Node's
+own test runner (Node 23.6 or later). The pane, list and Waiting rules are pure; `app.tsx` and
+`server.ts` are the bb glue.
 `npm run typecheck` needs `npm install` first.

@@ -36,6 +36,7 @@ const summarySchema = z.object({
   openThreadIds: z.array(z.string()),
   ownerWindowId: z.string().nullable(),
   windows: z.number(),
+  finishedThreadIds: z.array(z.string()),
 });
 
 export const rpcContract = defineRpcContract({
@@ -48,6 +49,7 @@ export const rpcContract = defineRpcContract({
         extraThreadIds: z.array(z.string().min(1).max(100)).max(16),
         compact: z.boolean(),
         focusedAt: z.number().nullable(),
+        finishedThreadIds: z.array(z.string().min(1).max(100)).max(16).default([]),
       })
       .strict(),
     output: z.object({ expiresAt: z.number() }),
@@ -119,6 +121,27 @@ export default function switchboard(bb: BbPluginApi): void {
         "How long a bb window's pane report counts after its last heartbeat. A window that closes without saying so drops out of the list after this.",
       experimental_schema: z.number().int().min(MIN_TTL_SECONDS).max(MAX_TTL_SECONDS),
       default: DEFAULT_TTL_SECONDS,
+    },
+    relaySections: {
+      type: "string",
+      label: "Waiting: sections that pass on your asks",
+      description:
+        "Section names or ids, comma-separated. A reply to a turn another thread started is FYI, unless that thread sits in one of these sections, which pass on what you asked (the front desk forwards your messages word for word). Empty: every turn another thread starts is FYI.",
+      default: "Front desk",
+    },
+    askLedgerFolder: {
+      type: "string",
+      label: "Waiting: front desk ledger folder",
+      description:
+        "Where the front desk keeps its daily ledger, one file a day named like 2026-11-03.jsonl, one ask per line. The Waiting view lists today's asks from it with where each one is now. A relative path is read from the New chat environment's checkout. Empty: no list of today's asks.",
+      default: "automation/front-desk/ledger",
+    },
+    railBadge: {
+      type: "boolean",
+      label: "Count on the rail icon",
+      description:
+        "Show how many threads are asking you or have replied on Switchboard's rail icon, amber while one is asking.",
+      default: true,
     },
   });
 

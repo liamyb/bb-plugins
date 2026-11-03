@@ -131,22 +131,25 @@ function attentionOf(thread: ThreadFacts): number {
  * Advance the memory by one snapshot for the listed threads.
  *
  * A thread seen for the first time is never flagged. After that, a thread
- * that isn't open in the slide is flagged Done when it stops working, or when
- * bb moves its attention time on. Opening it, or it starting work again,
- * clears the flag. Threads that left the list are forgotten.
+ * that isn't in view (open in the slide, or in a focused pane) is flagged
+ * Done when it stops working, or when bb moves its attention time on. Having
+ * it in view, or it starting work again, clears the flag. Threads that left
+ * the list are forgotten.
  */
 export function stepMemory(
   memory: MemoryMap,
   threads: readonly ThreadFacts[],
-  selectedId: string | null,
+  inView: string | null | ReadonlySet<string>,
 ): MemoryMap {
+  const viewed = (id: string) =>
+    typeof inView === "string" || inView === null ? id === inView : inView.has(id);
   const next: MemoryMap = {};
   for (const thread of threads) {
     const prev = memory[thread.id];
     const busy = isBusy(thread);
     const attentionAt = thread.latestAttentionAt;
     let flag = prev?.flag ?? null;
-    if (thread.id === selectedId || busy) {
+    if (viewed(thread.id) || busy) {
       flag = null;
     } else if (prev !== undefined) {
       const bumped =

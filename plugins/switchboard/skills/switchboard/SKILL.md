@@ -1,14 +1,15 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view or the count on its rail icon, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
 
 Switchboard is a bb plugin page (rail icon, or Cmd+Shift+S) that lists the threads open in the
 split panes of any bb window, with a state word each, and slides bb's own chat open in place
-when a row is clicked. It's sized for a small second bb window (Cmd+Shift+N, about 500px
-wide) and works in the main window too. There is no CLI command.
+when a row is clicked. Its Waiting view lists every thread waiting on the user across all
+sections, and the rail icon carries a count. It's sized for a small second bb window
+(Cmd+Shift+N, about 500px wide) and works in the main window too. There is no CLI command.
 
 ## What's listed
 
@@ -17,8 +18,8 @@ wide) and works in the main window too. There is no CLI command.
   listed until that window closes.
 - With `showChildren` on (the default), threads spawned by a listed thread nest under it.
 - Hidden helper threads (`visibility: "hidden"`) and archived threads never show.
-- The "All threads" toggle at the top lists every active thread instead. It's a per-browser
-  choice, kept in localStorage.
+- The view switch at the top picks Panes (the above), Waiting (below) or All (every active
+  thread). It's a per-browser choice, kept in localStorage (`bb-plugin-switchboard:view`).
 
 The state words are Needs you (pending interaction, `waiting-for-input` or `queued-failed`
 indicator, or `error` status), Working (`active`, `starting`, `stopping`, a runtime status
@@ -26,6 +27,39 @@ of `provisioning` or `host-reconnecting`, or any running workflow, background ag
 background command in the thread's `activity` counts), Done (bb's unread flag, or it went from
 working to idle while it wasn't the chat open in the slide) and Idle. Order is Needs you,
 Working, Done, then the rest by most recent attention.
+
+## The Waiting view
+
+Rules are pure in `src/waiting.ts` (`buildWaiting`). Over every top-level, visible, active
+thread:
+
+- **Asking you:** `hasPendingInteraction`, a `waiting-for-input` or `queued-failed` indicator,
+  `error` status or an `unread-error` indicator. Children appear only here, and only while
+  waiting on the user (pending interaction, `waiting-for-input` or `queued-failed`), labelled
+  "Under <parent>".
+- **Working:** busy, by the same rule as the Panes view.
+- **Replies / FYI:** not busy and unread. Unread is bb's `isUnread`, `latestAttentionAt` after
+  `lastReadAt`, or the thread being in the server's `finishedThreadIds` (it finished in a pane
+  while that pane, or its window, wasn't focused; each window's overlay works this out with
+  `stepPanes` and adds it to its `reportPanes` call). A thread opened from Switchboard is marked
+  read (`threads.markRead`) and its attention time saved in localStorage
+  (`bb-plugin-switchboard:seen`), which overrides the pane flag until it finishes again.
+- **Reply or FYI** is decided from `threads.events.list` (types `client/turn/requested` and
+  `turn/completed`, newest first, 24 events), cut into turns. The turns that completed after
+  `lastReadAt` (or, with none, the newest completed turn) are checked: any request with
+  `initiator: "user"`, `initiator: "system"` (a child's completed notice) or from a thread in a
+  `relaySections` section makes it a Reply. Only other threads (`initiator: "agent"`,
+  `senderThreadId`) or automations (input starting `[bb automation`) make it FYI. A sender that
+  isn't an active thread is looked up with `threads.get` for its section; until then the row
+  counts as a Reply.
+
+Today's asks: `<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read`
+every 60 seconds while the Waiting view shows. Relative folders resolve against the path of
+the `newChatEnvironmentId` environment. Each ask's status is its thread's Waiting group, else
+Read (active) or Archived.
+
+The rail badge (`experimental_useBadge` on the nav panel) is Asking you plus Replies, tone
+`warning` while anything is asking, computed in every window. Setting `railBadge` turns it off.
 
 ## Workflow lines
 
@@ -55,6 +89,11 @@ background commands get no lines.
   composer's own choice.
 - `paneReportTtlSeconds` (number, default `120`, 10 to 600): how long a window's pane report
   counts after its last heartbeat. Windows re-report every quarter of this.
+- `relaySections` (string, default `Front desk`): section names or ids, comma-separated, whose
+  threads pass on the user's asks, so a reply to their hand-off counts as a Reply, not FYI.
+- `askLedgerFolder` (string, default `automation/front-desk/ledger`): the front desk ledger
+  folder for Today's asks. Empty turns the list off.
+- `railBadge` (boolean, default `true`): the count on the rail icon.
 
 ## How panes cross windows
 
@@ -74,7 +113,12 @@ window.
 ## Troubleshooting
 
 - A thread isn't listed: check it's open in a pane of a bb window whose overlay is running
-  (`bb plugin list` shows switchboard running), or use the All threads toggle.
+  (`bb plugin list` shows switchboard running), or pick All.
+- A thread is in FYI but should be a Reply: its unread turns all came from another thread
+  outside `relaySections`. Check with
+  `curl "http://127.0.0.1:38886/api/v1/threads/<id>/events?types=client/turn/requested,turn/completed&order=desc&limit=24"`.
+- The pane summary, finished threads included:
+  `curl -X POST -H 'content-type: application/json' -d null http://127.0.0.1:38886/api/v1/plugins/switchboard/rpc/getPanes`.
 - The rail has no Switchboard icon: `bb settings ui get sidebar.visiblePluginPanels` must
   include `switchboard/switchboard`, or be null.
 - `bb plugin logs switchboard` shows window goodbyes and open-in-pane relays.

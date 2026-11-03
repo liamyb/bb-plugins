@@ -217,6 +217,181 @@ export const CSS = `
   outline-offset: 1px;
 }
 
+/* The view switch: Panes, Waiting, All. */
+.sb-views {
+  display: inline-flex;
+  flex: none;
+  padding: 0.125rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius, 0.5rem) * 0.75);
+  background: var(--card, var(--background, var(--canvas)));
+}
+.sb-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: calc(var(--radius, 0.5rem) * 0.5);
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+}
+.sb-view:hover {
+  color: var(--foreground, var(--ink));
+}
+.sb-view[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--foreground, var(--ink));
+}
+.sb-view:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+}
+.sb-view-count {
+  min-width: 1rem;
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.sb-view-count[data-tone="warning"] {
+  background: var(--warning, var(--destructive));
+  color: var(--warning-foreground, var(--primary-foreground));
+}
+
+/* Waiting: a heading per group, and rows with a second line saying why. */
+.sb-group + .sb-group,
+.sb-group + .sb-asks,
+.sb-rows > ul + .sb-asks {
+  margin-top: 0.375rem;
+}
+.sb-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem 0.125rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.sb-group-count {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.sb-group[data-group="asking"] > .sb-group-head {
+  color: var(--warning-text, var(--warning, var(--destructive)));
+}
+.sb-group[data-group="reply"] > .sb-group-head {
+  color: var(--primary);
+}
+.sb-lines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-width: 0;
+}
+.sb-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.sb-hint {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-wrow[data-group="fyi"] .sb-title {
+  color: color-mix(in oklab, var(--foreground, var(--ink)) 80%, transparent);
+}
+
+/* Today's asks, from the front desk's ledger. */
+.sb-asks > summary {
+  list-style: none;
+  cursor: default;
+}
+.sb-asks > summary::-webkit-details-marker {
+  display: none;
+}
+.sb-asks > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 0.625rem;
+  transition: transform 120ms ease;
+}
+.sb-asks[open] > summary::before {
+  transform: rotate(90deg);
+}
+.sb-ask-list {
+  margin: 0;
+  padding: 0 0 0.5rem;
+  list-style: none;
+}
+.sb-ask {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: calc(100% - 0.75rem);
+  min-height: 1.75rem;
+  margin: 0 0.375rem;
+  padding: 0.125rem 0.375rem;
+  border: 0;
+  border-radius: calc(var(--radius, 0.5rem) * 0.75);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: default;
+}
+.sb-ask:not(:disabled):hover {
+  background: var(--accent);
+}
+.sb-ask:disabled {
+  color: var(--muted-foreground);
+}
+.sb-ask:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -2px;
+}
+.sb-ask-time {
+  flex: none;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.sb-ask-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-state[data-status="asking"] {
+  color: var(--warning-text, var(--warning, var(--destructive)));
+  font-weight: 600;
+}
+.sb-state[data-status="reply"] {
+  color: var(--primary);
+  font-weight: 600;
+}
+.sb-state[data-status="working"] {
+  color: var(--foreground, var(--ink));
+}
+
 /* A workflow running in the thread above: a quieter line where a child would sit. */
 .sb-run .sb-row-main {
   min-height: 1.625rem;

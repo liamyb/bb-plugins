@@ -34,6 +34,7 @@ function report(
     extraThreadIds: [],
     compact: false,
     focusedAt: null,
+    finishedThreadIds: [],
     reportedAt: 1_000,
     expiresAt: 2_000,
     ...extra,
@@ -71,6 +72,10 @@ test("a stored report parses, and a malformed one doesn't", () => {
   assert.equal(parseStoredReport({ ...good, focusedAt: "now" }), null);
   assert.deepEqual(parseStoredReport({ ...good, focusedAt: 5 }), { ...good, focusedAt: 5 });
   assert.equal(parseStoredReport({ ...good, expiresAt: Number.NaN }), null);
+  assert.equal(parseStoredReport({ ...good, finishedThreadIds: [""] }), null);
+  // A report stored before the Waiting view existed has no finished list.
+  const { finishedThreadIds: _, ...older } = good;
+  assert.deepEqual(parseStoredReport(older), good);
 });
 
 test("saved panes parse back, and anything else is null", () => {
@@ -183,18 +188,27 @@ test("the pane owner is never compact, prefers a split, then the window used las
 
 test("a summary round-trips the wire and junk is refused", () => {
   const summary = summarize([
-    report("win_a", [pane("thr_2"), pane("thr_1")]),
-    report("win_b", null, { compact: true, extraThreadIds: ["thr_3"] }),
+    report("win_a", [pane("thr_2"), pane("thr_1")], { finishedThreadIds: ["thr_2"] }),
+    report("win_b", null, { compact: true, extraThreadIds: ["thr_3"], finishedThreadIds: ["thr_2"] }),
   ]);
   assert.deepEqual(summary, {
     openThreadIds: ["thr_1", "thr_2", "thr_3"],
     ownerWindowId: "win_a",
     windows: 2,
+    finishedThreadIds: ["thr_2"],
   });
   assert.deepEqual(parseSummary(JSON.parse(JSON.stringify(summary))), summary);
   assert.equal(sameSummary(summary, { ...summary, openThreadIds: [...summary.openThreadIds] }), true);
   assert.equal(sameSummary(summary, { ...summary, windows: 3 }), false);
   assert.equal(sameSummary(summary, { ...summary, openThreadIds: ["thr_1"] }), false);
+  assert.equal(sameSummary(summary, { ...summary, finishedThreadIds: [] }), false);
+  // A summary from a server that predates the Waiting view.
+  assert.deepEqual(parseSummary({ openThreadIds: [], ownerWindowId: null, windows: 0 }), {
+    openThreadIds: [],
+    ownerWindowId: null,
+    windows: 0,
+    finishedThreadIds: [],
+  });
   assert.equal(parseSummary(null), null);
   assert.equal(parseSummary({ openThreadIds: "thr_1", ownerWindowId: null, windows: 1 }), null);
   assert.equal(parseSummary({ openThreadIds: [], ownerWindowId: 7, windows: 1 }), null);

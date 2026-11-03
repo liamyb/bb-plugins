@@ -6,12 +6,12 @@
   "description": "A compact list of the chats open in your bb panes, with bb's own chat sliding open in place. Made for a small second bb window.",
   "license": "MIT",
   "engines": {
-    "bb": ">=0.46",
-    "bbPluginSdk": ">=0.6.37"
+    "bb": ">=0.48",
+    "bbPluginSdk": ">=0.6.104"
   },
   "bb": {
     "name": "Switchboard",
-    "description": "A page listing the chats open in your split panes, in any bb window, with a state word each (Needs you, Working, Done, Idle). Click a row and bb's chat slides open in place; a New chat button starts one on your project checkout. Sized for a 500px second window (Cmd+Shift+N), and it works in the main window too. Cmd+Shift+S opens it.",
+    "description": "A page listing the chats open in your split panes, in any bb window, with a state word each (Needs you, Working, Done, Idle), and a Waiting view of every thread waiting on you across all sections: asking you, replies you haven't read, FYI from other threads, and what's working. Click a row and bb's chat slides open in place; a New chat button starts one on your project checkout. The rail icon counts what's asking you or has replied. Sized for a 500px second window (Cmd+Shift+N), and it works in the main window too. Cmd+Shift+S opens it.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
@@ -27,7 +27,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.6.49",
+    "@get-bb/plugin-sdk": "0.6.104",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "sonner": "^1.7.4",

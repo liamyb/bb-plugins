@@ -47,6 +47,12 @@ export interface PaneReport {
   compact: boolean;
   /** When the window last had focus (epoch ms), or null if it hasn't had it yet. */
   focusedAt: number | null;
+  /**
+   * Threads in this window's panes that finished a turn while you weren't
+   * looking at the pane (see `stepPanes` in waiting.ts). bb marks a thread in
+   * a pane read as soon as it finishes, so the Waiting view needs this.
+   */
+  finishedThreadIds: string[];
 }
 
 /** A report as the server stores it. */
@@ -63,6 +69,8 @@ export interface PanesSummary {
   ownerWindowId: string | null;
   /** How many windows are reporting. */
   windows: number;
+  /** Threads that finished in a pane while you weren't looking, in any window, sorted. */
+  finishedThreadIds: string[];
 }
 
 export interface OpenRequest {
@@ -74,6 +82,7 @@ export const EMPTY_SUMMARY: PanesSummary = {
   openThreadIds: [],
   ownerWindowId: null,
   windows: 0,
+  finishedThreadIds: [],
 };
 
 /** The pane-report lifetime setting, held inside its bounds. */
@@ -113,6 +122,8 @@ export function parsePaneRefs(value: unknown): PaneRef[] | null {
 export function parseStoredReport(value: unknown): StoredReport | null {
   if (!isRecord(value)) return null;
   const { windowId, panes, extraThreadIds, compact, focusedAt, reportedAt, expiresAt } = value;
+  // Reports stored before the Waiting view have no finished list.
+  const finished = value.finishedThreadIds ?? [];
   if (typeof windowId !== "string" || windowId.length === 0) return null;
   if (focusedAt !== null && (typeof focusedAt !== "number" || !Number.isFinite(focusedAt))) {
     return null;
@@ -126,6 +137,9 @@ export function parseStoredReport(value: unknown): StoredReport | null {
     return null;
   }
   if (typeof compact !== "boolean") return null;
+  if (!Array.isArray(finished) || !finished.every((id) => typeof id === "string" && id.length > 0)) {
+    return null;
+  }
   if (typeof reportedAt !== "number" || !Number.isFinite(reportedAt)) return null;
   if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt)) return null;
   return {
@@ -134,6 +148,7 @@ export function parseStoredReport(value: unknown): StoredReport | null {
     extraThreadIds: [...(extraThreadIds as string[])],
     compact,
     focusedAt,
+    finishedThreadIds: [...(finished as string[])],
     reportedAt,
     expiresAt,
   };
@@ -238,19 +253,26 @@ export function paneOwner(reports: readonly StoredReport[]): string | null {
 }
 
 export function summarize(reports: readonly StoredReport[]): PanesSummary {
+  const finished = new Set<string>();
+  for (const report of reports) for (const id of report.finishedThreadIds) finished.add(id);
   return {
     openThreadIds: openThreadIds(reports),
     ownerWindowId: paneOwner(reports),
     windows: reports.length,
+    finishedThreadIds: [...finished].sort(),
   };
+}
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
 export function sameSummary(a: PanesSummary, b: PanesSummary): boolean {
   return (
     a.ownerWindowId === b.ownerWindowId &&
     a.windows === b.windows &&
-    a.openThreadIds.length === b.openThreadIds.length &&
-    a.openThreadIds.every((id, index) => id === b.openThreadIds[index])
+    sameIds(a.openThreadIds, b.openThreadIds) &&
+    sameIds(a.finishedThreadIds, b.finishedThreadIds)
   );
 }
 
@@ -258,10 +280,18 @@ export function sameSummary(a: PanesSummary, b: PanesSummary): boolean {
 export function parseSummary(value: unknown): PanesSummary | null {
   if (!isRecord(value)) return null;
   const { openThreadIds: ids, ownerWindowId, windows } = value;
-  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) return null;
+  const finished = value.finishedThreadIds ?? [];
+  const strings = (list: unknown): list is string[] =>
+    Array.isArray(list) && list.every((id) => typeof id === "string");
+  if (!strings(ids) || !strings(finished)) return null;
   if (ownerWindowId !== null && typeof ownerWindowId !== "string") return null;
   if (typeof windows !== "number" || !Number.isFinite(windows)) return null;
-  return { openThreadIds: [...new Set(ids as string[])].sort(), ownerWindowId, windows };
+  return {
+    openThreadIds: [...new Set(ids)].sort(),
+    ownerWindowId,
+    windows,
+    finishedThreadIds: [...new Set(finished)].sort(),
+  };
 }
 
 /** An open request off the wire, or null when it isn't one. */

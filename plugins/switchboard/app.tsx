@@ -5,18 +5,28 @@
 // - An overlay in every window reports that window's panes to the plugin
 //   server (server.ts), so the page in one window can list the panes of
 //   another, and it answers "Open in a pane" for the window that owns them.
-// - The page (a nav panel) lists the open threads with a state word each,
-//   slides bb's ThreadChat open when a row is clicked, and starts new chats
-//   with bb's New thread composer. A thread's running workflows show as lines
-//   under it, read from its timeline while bb counts any. The list rules are
-//   pure in src/current.ts and the pane rules in src/panes.ts; the CSS is in
-//   src/styles.ts.
+//   It also reports the threads in its panes that finished a turn while you
+//   weren't looking, since bb marks those read.
+// - The page (a nav panel) has three views. Panes lists the open threads
+//   with a state word each; All lists every active thread; Waiting lists the
+//   threads waiting on you, across every section, in four groups (Asking you,
+//   Replies, FYI, Working), with today's front desk asks under them. Clicking
+//   a row slides bb's ThreadChat open, and New chat starts one with bb's New
+//   thread composer. A thread's running workflows show as lines under it,
+//   read from its timeline while bb counts any.
+// - The rail icon carries a count of the threads asking you or with a reply,
+//   from the same rules.
+//
+// The list rules are pure in src/current.ts, the Waiting rules in
+// src/waiting.ts and the pane rules in src/panes.ts; the CSS is in
+// src/styles.ts.
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
 import { toast } from "sonner";
@@ -40,7 +50,9 @@ import {
   useSidebarSplitLayout,
   useSidebarThreadRowStatus,
   type BbNavigate,
+  type ExperimentalBadge,
   type NewThreadRequest,
+  type PluginSidebarSection,
   type PluginSidebarThread,
   type PluginThreadActionsInlineItem,
   type PluginThreadActionTarget,
@@ -60,6 +72,33 @@ import {
   type RunMap,
   type WorkflowRun,
 } from "./src/current";
+import {
+  ASK_STATUS_LABEL,
+  GROUP_LABEL,
+  GROUP_ORDER,
+  TURN_EVENT_LIMIT,
+  TURN_EVENT_TYPES,
+  askStatus,
+  badgeFor,
+  buildWaiting,
+  formatAgo,
+  hasUnread,
+  ledgerFileName,
+  ledgerFolder,
+  markSeen,
+  parseLedger,
+  parseSeen,
+  parseTurnEvents,
+  relayCheck,
+  segmentTurns,
+  stepPanes,
+  tally,
+  turnsWanted,
+  type LedgerAsk,
+  type TurnSegment,
+  type WaitingGroup,
+  type WaitingRow,
+} from "./src/waiting";
 import {
   COMPACT_QUERY,
   EMPTY_SUMMARY,
@@ -87,15 +126,22 @@ const REPORT_DEBOUNCE_MS = 150;
 // How often the run lines refresh while any listed thread has a workflow running.
 const WORKFLOW_POLL_MS = 10_000;
 
+// How often today's front desk asks are re-read while the Waiting view shows.
+const LEDGER_POLL_MS = 60_000;
+
 // sessionStorage, like Pane Attention and Pane Keeper: a reload keeps the
-// state, a new window starts clean. The show-all toggle is localStorage, so
-// it's one choice for every window.
+// state, a new window starts clean. The view, the seen map and the asks
+// toggle are localStorage, so every window shares them.
 const KEYS = {
   held: "bb-plugin-switchboard:held-panes",
   lastRoute: "bb-plugin-switchboard:last-route-thread",
   localOpen: "bb-plugin-switchboard:local-open",
   memory: "bb-plugin-switchboard:memory",
+  paneMemory: "bb-plugin-switchboard:pane-memory",
   showAll: "bb-plugin-switchboard:show-all",
+  view: "bb-plugin-switchboard:view",
+  seen: "bb-plugin-switchboard:seen",
+  asksOpen: "bb-plugin-switchboard:asks-open",
 } as const;
 
 function readStorage(storage: "session" | "local", key: string): string | null {
@@ -162,6 +208,9 @@ interface Settings {
   newChatProjectId: string | undefined;
   newChatEnvironmentId: string | undefined;
   ttlSeconds: number;
+  relaySections: string;
+  askLedgerFolder: string;
+  railBadge: boolean;
 }
 
 /** Settings as the page reads them. `values` is undefined until bb has loaded them. */
@@ -173,7 +222,267 @@ export function parseSettings(values: Record<string, unknown> | undefined): Sett
     newChatProjectId: text(values?.newChatProjectId),
     newChatEnvironmentId: text(values?.newChatEnvironmentId),
     ttlSeconds: clampTtlSeconds(values?.paneReportTtlSeconds),
+    // Until bb has loaded the settings, the defaults (server.ts).
+    relaySections: typeof values?.relaySections === "string" ? values.relaySections : "Front desk",
+    askLedgerFolder:
+      typeof values?.askLedgerFolder === "string"
+        ? values.askLedgerFolder
+        : "automation/front-desk/ledger",
+    railBadge: values?.railBadge !== false,
   };
+}
+
+type Listener = () => void;
+type Sdk = ReturnType<typeof useSdk>;
+
+/**
+ * Each thread's turns, read when its key changes and shared by every hook in
+ * this window (the page and the rail badge), so a thread is read once.
+ */
+const turnStore = (() => {
+  const entries = new Map<string, { key: string; segments: TurnSegment[] }>();
+  const loading = new Map<string, string>();
+  const listeners = new Set<Listener>();
+  let snapshot: ReadonlyMap<string, readonly TurnSegment[]> = new Map();
+  const notify = () => {
+    snapshot = new Map([...entries].map(([id, entry]) => [id, entry.segments]));
+    for (const listener of listeners) listener();
+  };
+  return {
+    subscribe(listener: Listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    get: () => snapshot,
+    ensure(sdk: Sdk, threadId: string, key: string) {
+      if (entries.get(threadId)?.key === key || loading.get(threadId) === key) return;
+      loading.set(threadId, key);
+      sdk.threads.events
+        .list({
+          threadId,
+          types: TURN_EVENT_TYPES,
+          order: "desc",
+          limit: String(TURN_EVENT_LIMIT),
+        })
+        .then((rows) => {
+          if (loading.get(threadId) !== key) return;
+          const exhausted = Array.isArray(rows) && rows.length < TURN_EVENT_LIMIT;
+          entries.set(threadId, { key, segments: segmentTurns(parseTurnEvents(rows), exhausted) });
+          notify();
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (loading.get(threadId) === key) loading.delete(threadId);
+        });
+    },
+  };
+})();
+
+interface SenderInfo {
+  title: string;
+  sectionId: string | null;
+}
+
+/**
+ * Threads that started a turn but aren't in the sidebar's active list (an
+ * archived front desk, say): read once each, for their title and section.
+ * Null when bb doesn't have it.
+ */
+const senderStore = (() => {
+  const entries = new Map<string, SenderInfo | null>();
+  const loading = new Set<string>();
+  const listeners = new Set<Listener>();
+  let snapshot: ReadonlyMap<string, SenderInfo | null> = new Map();
+  return {
+    subscribe(listener: Listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    get: () => snapshot,
+    ensure(sdk: Sdk, threadId: string) {
+      if (entries.has(threadId) || loading.has(threadId)) return;
+      loading.add(threadId);
+      sdk.threads
+        .get({ threadId })
+        .then(
+          (result) => {
+            const raw = result as unknown as Record<string, unknown>;
+            const thread = (typeof raw.thread === "object" && raw.thread !== null ? raw.thread : raw) as Record<
+              string,
+              unknown
+            >;
+            const title =
+              (typeof thread.title === "string" && thread.title) ||
+              (typeof thread.titleFallback === "string" && thread.titleFallback) ||
+              threadId;
+            entries.set(threadId, {
+              title,
+              sectionId: typeof thread.sectionId === "string" ? thread.sectionId : null,
+            });
+          },
+          () => entries.set(threadId, null),
+        )
+        .finally(() => {
+          loading.delete(threadId);
+          snapshot = new Map(entries);
+          for (const listener of listeners) listener();
+        });
+    },
+  };
+})();
+
+/**
+ * The attention time each thread had when you last opened it from
+ * Switchboard. localStorage, so every window agrees; the `storage` event
+ * brings another window's changes in.
+ */
+const seenStore = (() => {
+  let value: Record<string, number> | null = null;
+  const listeners = new Set<Listener>();
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== KEYS.seen) return;
+    value = parseSeen(event.newValue);
+    for (const listener of listeners) listener();
+  };
+  return {
+    subscribe(listener: Listener) {
+      if (listeners.size === 0) window.addEventListener("storage", onStorage);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) window.removeEventListener("storage", onStorage);
+      };
+    },
+    get(): Record<string, number> {
+      value ??= parseSeen(readStorage("local", KEYS.seen));
+      return value;
+    },
+    mark(threadId: string, attentionAt: number, activeIds: ReadonlySet<string>) {
+      value = markSeen(seenStore.get(), threadId, attentionAt, activeIds);
+      writeStorage("local", KEYS.seen, JSON.stringify(value));
+      for (const listener of listeners) listener();
+    },
+  };
+})();
+
+/**
+ * Which threads are open in panes, and which finished in one unwatched, from
+ * the server: on mount, after a reconnect, and whenever it says it changed.
+ */
+function usePanesSummary(): PanesSummary {
+  const rpc = useRpc<typeof rpcContract>();
+  const connection = useRealtimeConnectionState();
+  const [summary, setSummary] = useState<PanesSummary>(EMPTY_SUMMARY);
+  const refresh = useCallback(async () => {
+    try {
+      const next = parseSummary(await rpc.call("getPanes", null));
+      if (next !== null) setSummary(next);
+    } catch {
+      // The next signal or heartbeat brings it.
+    }
+  }, [rpc]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  const connectedBefore = useRef(false);
+  useEffect(() => {
+    if (connection !== "connected") return;
+    if (connectedBefore.current) void refresh();
+    connectedBefore.current = true;
+  }, [connection, refresh]);
+  const onPanes = useCallback(
+    (payload: unknown) => {
+      const next = parseSummary(payload);
+      if (next === null) void refresh();
+      else setSummary(next);
+    },
+    [refresh],
+  );
+  useRealtime(PANES_CHANNEL, onPanes);
+  return summary;
+}
+
+interface Waiting {
+  status: "error" | "loading" | "ready";
+  threads: readonly PluginSidebarThread[];
+  sections: readonly PluginSidebarSection[];
+  byId: ReadonlyMap<string, PluginSidebarThread>;
+  rows: WaitingRow[];
+  summary: PanesSummary;
+  senders: ReadonlyMap<string, SenderInfo | null>;
+}
+
+/**
+ * The Waiting view's rows (src/waiting.ts) from bb's live thread list, the
+ * pane reports, the seen map and each listed thread's turns. Used by the page
+ * and by the rail badge.
+ */
+function useWaiting(
+  relaySections: string,
+  keep: { id: string; group: WaitingGroup } | null,
+): Waiting {
+  const { status, threads, sections } = useSidebarThreads();
+  const summary = usePanesSummary();
+  const sdk = useSdk();
+  const seen = useSyncExternalStore(seenStore.subscribe, seenStore.get);
+  const finished = useMemo(() => new Set(summary.finishedThreadIds), [summary.finishedThreadIds]);
+  const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+
+  const wantedKey = JSON.stringify(turnsWanted(threads, finished, seen));
+  useEffect(() => {
+    for (const { id, key } of JSON.parse(wantedKey) as { id: string; key: string }[]) {
+      turnStore.ensure(sdk, id, key);
+    }
+  }, [sdk, wantedKey]);
+  const turns = useSyncExternalStore(turnStore.subscribe, turnStore.get);
+
+  // Senders that aren't active threads: their section decides a relay.
+  const unknownSenders = useMemo(() => {
+    const ids = new Set<string>();
+    for (const segments of turns.values()) {
+      for (const segment of segments) {
+        for (const origin of segment.origins) {
+          if (origin.kind === "thread" && !byId.has(origin.threadId)) ids.add(origin.threadId);
+        }
+      }
+    }
+    return [...ids].sort().join(",");
+  }, [turns, byId]);
+  useEffect(() => {
+    if (unknownSenders.length === 0) return;
+    for (const id of unknownSenders.split(",")) senderStore.ensure(sdk, id);
+  }, [sdk, unknownSenders]);
+  const senders = useSyncExternalStore(senderStore.subscribe, senderStore.get);
+
+  const isRelay = useMemo(
+    () =>
+      relayCheck(relaySections, sections, (id) => {
+        const active = byId.get(id);
+        if (active !== undefined) return active.sectionId;
+        const sender = senders.get(id);
+        return sender === undefined ? undefined : (sender?.sectionId ?? null);
+      }),
+    [relaySections, sections, byId, senders],
+  );
+
+  const rows = useMemo(
+    () => buildWaiting({ threads, finishedInPanes: finished, seen, turns, isRelay, keep }),
+    [threads, finished, seen, turns, isRelay, keep],
+  );
+  return { status, threads, sections, byId, rows, summary, senders };
+}
+
+/** The rail badge: how many threads are asking you or have replied. */
+function useWaitingBadge(): ExperimentalBadge | null {
+  const { values } = useSettings();
+  const settings = parseSettings(values as Record<string, unknown> | undefined);
+  const { status, rows } = useWaiting(settings.relaySections, null);
+  if (!settings.railBadge || status !== "ready") return null;
+  return badgeFor(tally(rows));
 }
 
 function onPluginPage(): boolean {
@@ -285,6 +594,38 @@ function Overlay() {
   // window you used last when there's more than one.
   const focusedAt = useRef<number | null>(document.hasFocus() ? Date.now() : null);
 
+  // The threads in this window's panes that finished a turn while you weren't
+  // looking at the pane, for the Waiting view. With the window itself not
+  // focused, no pane counts as looked at. With no split (or bb's layout not
+  // loaded yet) nothing's reported, but the memory is kept for when it's back.
+  const { threads } = useSidebarThreads();
+  const [windowFocused, setWindowFocused] = useState(() => document.hasFocus());
+  useEffect(() => {
+    const onFocus = () => setWindowFocused(true);
+    const onBlur = () => setWindowFocused(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+  const paneMemory = useRef<MemoryMap | null>(null);
+  const finished = useMemo(() => {
+    paneMemory.current ??= parseMemory(readStorage("session", KEYS.paneMemory));
+    if (panes === null) return [];
+    const byId = new Map(threads.map((thread) => [thread.id, thread]));
+    const step = stepPanes(paneMemory.current, panes, byId, windowFocused);
+    paneMemory.current = step.memory;
+    return step.finished;
+  }, [panes, threads, windowFocused]);
+  const finishedKey = finished.join(",");
+  useEffect(() => {
+    if (paneMemory.current !== null) {
+      writeStorage("session", KEYS.paneMemory, serializeMemory(paneMemory.current));
+    }
+  }, [finishedKey]);
+
   const report = useCallback(() => {
     let extraThreadIds: string[] = [];
     if (panes !== null) {
@@ -304,9 +645,10 @@ function Overlay() {
       extraThreadIds,
       compact: window.matchMedia(COMPACT_QUERY).matches,
       focusedAt: focusedAt.current,
+      finishedThreadIds: finishedKey.length === 0 ? [] : finishedKey.split(",").slice(0, 16),
     };
     void rpc.call("reportPanes", body).catch(() => undefined);
-  }, [rpc, windowId, panes, context.threadId]);
+  }, [rpc, windowId, panes, context.threadId, finishedKey]);
 
   const reportRef = useRef(report);
   reportRef.current = report;
@@ -388,6 +730,7 @@ function toActionTarget(thread: PluginSidebarThread): PluginThreadActionTarget {
     id: thread.id,
     projectId: thread.projectId,
     parentThreadId: thread.parentThreadId,
+    parentNotifications: thread.parentNotifications,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
     sectionId: thread.sectionId,
@@ -589,21 +932,263 @@ function ThreadRow({ row, depth, threads, runs, now, selectedId, onOpen, onOpenI
   );
 }
 
+const ASKING_HINT: Record<NonNullable<WaitingRow["asking"]>, string> = {
+  question: "Waiting for your answer",
+  "queued-failed": "A queued message didn't send",
+  failed: "The last turn failed",
+};
+
+/** The second line of a Waiting row: its section, then why it's there. */
+function waitingHint(
+  row: WaitingRow,
+  thread: PluginSidebarThread,
+  sections: readonly PluginSidebarSection[],
+  titleOf: (threadId: string) => string,
+): string {
+  const parts: string[] = [];
+  if (row.parentId !== null) {
+    parts.push(`Under ${titleOf(row.parentId)}`);
+  } else {
+    const section = sections.find((candidate) => candidate.id === thread.sectionId);
+    if (section !== undefined) parts.push(section.name);
+  }
+  if (row.asking !== null) {
+    parts.push(ASKING_HINT[row.asking]);
+  } else if (row.verdict.kind === "fyi") {
+    const from = row.verdict.from;
+    parts.push(
+      from.kind === "thread"
+        ? `From ${titleOf(from.threadId)}`
+        : from.kind === "automation"
+          ? "From an automation"
+          : "From a child thread",
+    );
+  }
+  return parts.join(" · ");
+}
+
+interface WaitingRowProps {
+  row: WaitingRow;
+  thread: PluginSidebarThread;
+  hint: string;
+  now: number;
+  runs: readonly WorkflowRun[];
+  selected: boolean;
+  onOpen(threadId: string, group: WaitingGroup): void;
+  onOpenInPane(threadId: string): void;
+}
+
+function WaitingRowView({ row, thread, hint, now, runs, selected, onOpen, onOpenInPane }: WaitingRowProps) {
+  const rowStatus = useSidebarThreadRowStatus(row.id);
+  const inline = useMemo<PluginThreadActionsInlineItem[]>(
+    () => [
+      {
+        key: "switchboard-open-in-pane",
+        group: THREAD_ACTION_GROUPS.open,
+        action: {
+          label: "Open in a pane",
+          icon: "Columns",
+          run: () => onOpenInPane(row.id),
+        },
+      },
+    ],
+    [row.id, onOpenInPane],
+  );
+  const ago = row.group === "working" ? "" : formatAgo(now - row.attentionAt);
+  const label = [thread.displayTitle, GROUP_LABEL[row.group], hint, ago].filter(Boolean).join(", ");
+  return (
+    <li>
+      <div
+        className="sb-row sb-wrow"
+        data-group={row.group}
+        data-selected={selected ? "" : undefined}
+        style={{ marginLeft: "0.375rem" }}
+      >
+        <button
+          type="button"
+          className="sb-row-main"
+          aria-label={label}
+          aria-current={selected ? "true" : undefined}
+          onClick={() => onOpen(row.id, row.group)}
+        >
+          <span className="sb-glyph" aria-hidden="true">
+            <ThreadStatusGlyph indicator={thread.indicator} rowStatus={rowStatus} size="compact" />
+          </span>
+          <span className="sb-lines">
+            <span className="sb-line">
+              <span className="sb-title">
+                <ThreadTitle threadId={row.id} />
+              </span>
+              {ago.length > 0 ? <span className="sb-state">{ago}</span> : null}
+            </span>
+            {hint.length > 0 ? (
+              <span className="sb-hint" title={hint}>
+                {hint}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        <ThreadActionsMenu
+          thread={toActionTarget(thread)}
+          inline={inline}
+          side="bottom"
+          align="end"
+          trigger={(props) => (
+            <button {...props} type="button" className="sb-menu" aria-label="Thread actions">
+              ⋯
+            </button>
+          )}
+        />
+      </div>
+      {runs.length > 0 ? (
+        <ul>
+          {runs.map((run) => (
+            <RunLine
+              key={run.id}
+              run={run}
+              depth={1}
+              now={now}
+              threadTitle={thread.displayTitle}
+              onOpen={() => onOpen(row.id, row.group)}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+/** A clock for "5m ago" labels, ticking every `ms` while mounted. */
+function useNow(ms: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), ms);
+    return () => window.clearInterval(timer);
+  }, [ms]);
+  return now;
+}
+
+/**
+ * Today's front desk asks, from the ledger file in `folder`, read now and
+ * every LEDGER_POLL_MS while `enabled`. Null when there's no file to read.
+ */
+function useLedger(folder: string | null, enabled: boolean): LedgerAsk[] | null {
+  const sdk = useSdk();
+  const [asks, setAsks] = useState<LedgerAsk[] | null>(null);
+  useEffect(() => {
+    if (!enabled || folder === null) {
+      setAsks(null);
+      return;
+    }
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const read = async () => {
+      const path = `${folder}/${ledgerFileName(new Date())}`;
+      try {
+        const file = await sdk.files.read({ path, signal: controller.signal });
+        const raw = file as unknown as { content?: unknown; contentEncoding?: unknown };
+        let text = typeof raw.content === "string" ? raw.content : "";
+        if (raw.contentEncoding === "base64") {
+          const bytes = Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+          text = new TextDecoder().decode(bytes);
+        }
+        if (!controller.signal.aborted) setAsks(parseLedger(text));
+      } catch {
+        // No ledger today yet, or it can't be read: no list.
+        if (!controller.signal.aborted) setAsks(null);
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(() => void read(), LEDGER_POLL_MS);
+    };
+    void read();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [sdk, folder, enabled]);
+  return asks;
+}
+
+interface TodaysAsksProps {
+  asks: readonly LedgerAsk[];
+  rows: ReadonlyMap<string, WaitingRow>;
+  activeIds: ReadonlySet<string>;
+  open: boolean;
+  onToggle(open: boolean): void;
+  onOpen(threadId: string): void;
+}
+
+/** What the front desk was asked today, newest first, with where each one is now. */
+function TodaysAsks({ asks, rows, activeIds, open, onToggle, onOpen }: TodaysAsksProps) {
+  const newestFirst = useMemo(() => [...asks].reverse(), [asks]);
+  return (
+    <details
+      className="sb-asks"
+      open={open}
+      onToggle={(event) => onToggle((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="sb-group-head">
+        <span>Today's asks</span>
+        <span className="sb-group-count">{asks.length}</span>
+      </summary>
+      <ul className="sb-ask-list">
+        {newestFirst.map((ask, index) => {
+          const status = askStatus(ask.threadId, rows, activeIds);
+          const label = ASK_STATUS_LABEL[status];
+          const threadId = ask.threadId;
+          return (
+            <li key={`${index}:${ask.time}:${ask.ask}`}>
+              <button
+                type="button"
+                className="sb-ask"
+                disabled={threadId === null || status === "archived"}
+                title={ask.ask}
+                aria-label={[ask.time, ask.ask, label].filter(Boolean).join(", ")}
+                onClick={() => {
+                  if (threadId !== null) onOpen(threadId);
+                }}
+              >
+                <span className="sb-ask-time">{ask.time}</span>
+                <span className="sb-ask-text">{ask.ask}</span>
+                <span className="sb-state" data-status={status}>
+                  {label}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+type View = "panes" | "waiting" | "all";
+
+const VIEWS: readonly { id: View; label: string; title: string }[] = [
+  { id: "panes", label: "Panes", title: "The chats open in your panes" },
+  { id: "waiting", label: "Waiting", title: "Threads waiting on you, in every section" },
+  { id: "all", label: "All", title: "Every active thread" },
+];
+
+/** The saved view; before there was one, the old All threads toggle decides. */
+function readView(): View {
+  const saved = readStorage("local", KEYS.view);
+  if (saved === "panes" || saved === "waiting" || saved === "all") return saved;
+  return readStorage("local", KEYS.showAll) === "1" ? "all" : "waiting";
+}
+
 /** The Switchboard page. */
 function SwitchboardPage() {
-  const { status, threads } = useSidebarThreads();
   const rpc = useRpc<typeof rpcContract>();
   const sdk = useSdk();
   const navigate = useBbNavigate();
   const { values } = useSettings();
-  const connection = useRealtimeConnectionState();
   const settings = useMemo(
     () => parseSettings(values as Record<string, unknown> | undefined),
     [values],
   );
 
-  const [summary, setSummary] = useState<PanesSummary>(EMPTY_SUMMARY);
-  const [showAll, setShowAll] = useState(() => readStorage("local", KEYS.showAll) === "1");
+  const [view, setView] = useState<View>(readView);
+  const showAll = view === "all";
   // Threads this page opened itself (new chats), kept until the window closes.
   const [localOpen, setLocalOpen] = useState<ReadonlySet<string>>(() =>
     readStringSet(KEYS.localOpen),
@@ -614,6 +1199,24 @@ function SwitchboardPage() {
   const [focusRequest, setFocusRequest] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const memoryRef = useRef<MemoryMap | null>(null);
+
+  // A Waiting row opened in the slide keeps its place while it's open, even
+  // though opening it marked it read.
+  const [opened, setOpened] = useState<{ id: string; group: WaitingGroup } | null>(null);
+  const selectedThreadId = selection?.kind === "thread" ? selection.id : null;
+  const keep = opened !== null && opened.id === selectedThreadId ? opened : null;
+  const waiting = useWaiting(settings.relaySections, keep);
+  const { status, threads, summary, sections, senders } = waiting;
+  // The count leaves out the open thread once it's read, like the rail badge.
+  const counts = useMemo(() => {
+    const kept = keep === null ? undefined : waiting.byId.get(keep.id);
+    const finished = new Set(waiting.summary.finishedThreadIds);
+    const readNow =
+      kept !== undefined && !hasUnread(kept, finished, seenStore.get()) ? kept.id : null;
+    return tally(waiting.rows.filter((row) => row.id !== readNow));
+  }, [waiting.rows, waiting.byId, waiting.summary.finishedThreadIds, keep]);
+  const now = useNow(30_000);
+  const [asksOpen, setAsksOpen] = useState(() => readStorage("local", KEYS.asksOpen) !== "0");
 
   // The plugin's own CSS, for as long as the page is mounted.
   useEffect(() => {
@@ -629,34 +1232,6 @@ function SwitchboardPage() {
       if (mine) style?.remove();
     };
   }, []);
-
-  // Which threads are open in panes, from the server: on mount, after a
-  // reconnect, and whenever it says the union changed.
-  const refresh = useCallback(async () => {
-    try {
-      setSummary(await rpc.call("getPanes", null));
-    } catch {
-      // The next signal or heartbeat brings it.
-    }
-  }, [rpc]);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  const connectedBefore = useRef(false);
-  useEffect(() => {
-    if (connection !== "connected") return;
-    if (connectedBefore.current) void refresh();
-    connectedBefore.current = true;
-  }, [connection, refresh]);
-  const onPanes = useCallback(
-    (payload: unknown) => {
-      const next = parseSummary(payload);
-      if (next === null) void refresh();
-      else setSummary(next);
-    },
-    [refresh],
-  );
-  useRealtime(PANES_CHANNEL, onPanes);
 
   // Wide or narrow is the page's own width, not the window's.
   useEffect(() => {
@@ -699,8 +1274,36 @@ function SwitchboardPage() {
     }
   }, [rows]);
 
-  const polled = useMemo(() => threadsWithWorkflows(rows, byId), [rows, byId]);
-  const { runs, now } = useWorkflowRuns(polled);
+  // The workflow lines: under the listed threads, or the Working group's.
+  const polled = useMemo(() => {
+    if (view !== "waiting") return threadsWithWorkflows(rows, byId);
+    return waiting.rows
+      .filter((row) => row.group === "working")
+      .map((row) => ({ id: row.id, workflows: byId.get(row.id)?.activity?.workflows ?? 0 }))
+      .filter((entry) => entry.workflows > 0);
+  }, [view, rows, waiting.rows, byId]);
+  const { runs, now: runNow } = useWorkflowRuns(polled);
+
+  // Today's front desk asks, read from the project checkout while Waiting shows.
+  const checkoutPath = useMemo(() => {
+    const id = settings.newChatEnvironmentId;
+    if (id === undefined) return null;
+    return threads.find((thread) => thread.environment?.id === id)?.environment?.path ?? null;
+  }, [threads, settings.newChatEnvironmentId]);
+  const asks = useLedger(
+    ledgerFolder(settings.askLedgerFolder, checkoutPath),
+    view === "waiting",
+  );
+  const activeIds = useMemo(() => new Set(byId.keys()), [byId]);
+  const rowsById = useMemo(
+    () => new Map(waiting.rows.map((row) => [row.id, row])),
+    [waiting.rows],
+  );
+  const titleOf = useCallback(
+    (threadId: string) =>
+      byId.get(threadId)?.displayTitle ?? senders.get(threadId)?.title ?? "another thread",
+    [byId, senders],
+  );
 
   // A new chat this page started drops out once bb no longer lists it
   // (archived, say). Only an id the list has carried at some point counts as
@@ -723,6 +1326,23 @@ function SwitchboardPage() {
     setSelection({ kind: "thread", id });
     setSlideOpen(true);
   }, []);
+
+  // Opening a thread from Waiting reads it: bb's read state, and the seen map
+  // for a thread whose pane finished unwatched.
+  const openFromWaiting = useCallback(
+    (id: string, group: WaitingGroup | null) => {
+      const thread = byId.get(id);
+      setOpened(group === null ? null : { id, group });
+      openThread(id);
+      if (thread === undefined) return;
+      seenStore.mark(id, thread.latestAttentionAt, activeIds);
+      const finished = new Set(summary.finishedThreadIds);
+      if (hasUnread(thread, finished, {})) {
+        void sdk.threads.markRead({ threadId: id }).catch(() => undefined);
+      }
+    },
+    [byId, openThread, activeIds, summary.finishedThreadIds, sdk],
+  );
   const openNew = useCallback(() => {
     setSelection({ kind: "new" });
     setSlideOpen(true);
@@ -771,11 +1391,13 @@ function SwitchboardPage() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [slideOpen, closeSlide]);
 
-  const toggleShowAll = useCallback(() => {
-    setShowAll((current) => {
-      writeStorage("local", KEYS.showAll, current ? "0" : "1");
-      return !current;
-    });
+  const chooseView = useCallback((next: View) => {
+    setView(next);
+    writeStorage("local", KEYS.view, next);
+  }, []);
+  const toggleAsks = useCallback((open: boolean) => {
+    setAsksOpen(open);
+    writeStorage("local", KEYS.asksOpen, open ? "1" : "0");
   }, []);
 
   // "Open in a pane": the window that owns the panes gets it, through the
@@ -832,7 +1454,64 @@ function SwitchboardPage() {
       ? "Loading threads"
       : showAll
         ? "No active threads."
-        : "Nothing's open in a pane. Open a thread in a split, or show all threads.";
+        : "Nothing's open in a pane. Open a thread in a split, or pick All.";
+
+  const waitingCount = counts.asking + counts.replies;
+  const waitingBody = (
+    <div className="sb-rows">
+      {status === "loading" ? (
+        <div className="sb-empty">Loading threads</div>
+      ) : waiting.rows.length === 0 ? (
+        <div className="sb-empty">Nothing's waiting on you.</div>
+      ) : (
+        <ul aria-label="Waiting on you">
+          {GROUP_ORDER.map((group) => {
+            const list = waiting.rows.filter((row) => row.group === group);
+            if (list.length === 0) return null;
+            return (
+              <li key={group} className="sb-group" data-group={group}>
+                <div className="sb-group-head">
+                  <span>{GROUP_LABEL[group]}</span>
+                  <span className="sb-group-count">{list.length}</span>
+                </div>
+                <ul>
+                  {list.map((row) => {
+                    const thread = byId.get(row.id);
+                    if (thread === undefined) return null;
+                    const running =
+                      (thread.activity?.workflows ?? 0) > 0 ? (runs.get(row.id) ?? []) : [];
+                    return (
+                      <WaitingRowView
+                        key={row.id}
+                        row={row}
+                        thread={thread}
+                        hint={waitingHint(row, thread, sections, titleOf)}
+                        now={Math.max(now, runNow)}
+                        runs={running}
+                        selected={selectedId === row.id}
+                        onOpen={openFromWaiting}
+                        onOpenInPane={openInPane}
+                      />
+                    );
+                  })}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {asks !== null && asks.length > 0 ? (
+        <TodaysAsks
+          asks={asks}
+          rows={rowsById}
+          activeIds={activeIds}
+          open={asksOpen}
+          onToggle={toggleAsks}
+          onOpen={(threadId) => openFromWaiting(threadId, rowsById.get(threadId)?.group ?? null)}
+        />
+      ) : null}
+    </div>
+  );
 
   return (
     <div
@@ -847,17 +1526,33 @@ function SwitchboardPage() {
             New chat
           </button>
           <span className="sb-toolbar-spacer" />
-          <button
-            type="button"
-            className="sb-button"
-            aria-pressed={showAll}
-            title={showAll ? "Showing every active thread" : "Showing the chats open in panes"}
-            onClick={toggleShowAll}
-          >
-            All threads
-          </button>
+          <div className="sb-views" role="group" aria-label="Show">
+            {VIEWS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="sb-view"
+                aria-pressed={view === option.id}
+                title={option.title}
+                onClick={() => chooseView(option.id)}
+              >
+                {option.label}
+                {option.id === "waiting" && waitingCount > 0 ? (
+                  <span
+                    className="sb-view-count"
+                    data-tone={counts.asking > 0 ? "warning" : undefined}
+                    aria-label={`, ${waitingCount} waiting`}
+                  >
+                    {waitingCount}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
         </div>
-        {rows.length === 0 ? (
+        {view === "waiting" ? (
+          waitingBody
+        ) : rows.length === 0 ? (
           <div className="sb-empty">{emptyText}</div>
         ) : (
           <ul className="sb-rows" aria-label="Chats">
@@ -868,7 +1563,7 @@ function SwitchboardPage() {
                 depth={0}
                 threads={byId}
                 runs={runs}
-                now={now}
+                now={runNow}
                 selectedId={selectedId}
                 onOpen={openThread}
                 onOpenInPane={openInPane}
@@ -959,6 +1654,7 @@ export default definePluginApp((app) => {
     icon: "./assets/icon.svg",
     path: PANEL_PATH,
     component: SwitchboardPage,
+    experimental_useBadge: useWaitingBadge,
   });
   app.slots.experimental_appOverlay({
     id: "switchboard",
