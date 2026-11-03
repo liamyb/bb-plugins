@@ -110,6 +110,8 @@ background commands get no lines.
   folder for Today's asks. Empty turns the list off.
 - `railBadge` (boolean, default `true`): the count on the rail icon.
 - `usageGauge` (boolean, default `true`): the session and week rings in the title bar.
+- `stayOnSwitchboard` (boolean, default `true`): a narrow window showing Switchboard goes
+  straight back to it when something other than the user opens a thread there.
 
 ## How panes cross windows
 
@@ -138,9 +140,13 @@ window.
 - The rail has no Switchboard icon: `bb settings ui get sidebar.visiblePluginPanels` must
   include `switchboard/switchboard`, or be null.
 - `bb plugin logs switchboard` shows window goodbyes and open-in-pane relays.
-- The small window left Switchboard for a thread, with a file covering it: an agent ran
-  `bb thread open <thread> <file> --split right`. bb broadcasts that to every client
-  (`notifyThreadOpen`, `broadcastToAllClients`) and each window goes to the thread; a narrow
-  one replaces its page. Cmd+J hides the panel, Cmd+Shift+S comes back.
+- A bar says "An agent opened this in bb, so Switchboard stayed put": an agent ran
+  `bb thread open <thread> <file> --split right`, which bb broadcasts to every client
+  (`notifyThreadOpen`, `broadcastToAllClients`), and each window goes to the thread. The
+  overlay sends a compact window (under 768px) back to Switchboard when it was showing the
+  page within the last second and there was no pointerdown, keydown or focus in that window in
+  the 1.5s before (`shouldStayOnSwitchboard` in `src/panes.ts`); the page reopens the slide's
+  chat if it comes back within 5s. Show goes to the thread. If the window stays on the thread
+  instead, something counted as input; `stayOnSwitchboard` false turns this off.
 - Ask the desk opens New chat instead: no active top-level thread in the `frontDesk` section
   (`bb thread list --section <id> --json`).

@@ -113,6 +113,7 @@ import {
   parseHeld,
   parseOpenRequest,
   parseSummary,
+  shouldStayOnSwitchboard,
   type PaneRef,
   type PaneReport,
   type PanesSummary,
@@ -220,6 +221,7 @@ interface Settings {
   askLedgerFolder: string;
   railBadge: boolean;
   usageGauge: boolean;
+  stayOnSwitchboard: boolean;
 }
 
 /** Settings as the page reads them. `values` is undefined until bb has loaded them. */
@@ -240,6 +242,7 @@ export function parseSettings(values: Record<string, unknown> | undefined): Sett
         : "automation/front-desk/ledger",
     railBadge: values?.railBadge !== false,
     usageGauge: values?.usageGauge !== false,
+    stayOnSwitchboard: values?.stayOnSwitchboard !== false,
   };
 }
 
@@ -500,6 +503,54 @@ function onPluginPage(): boolean {
   return window.location.pathname.startsWith("/plugins/");
 }
 
+/**
+ * The Switchboard page in this window: whether it's showing, when it last
+ * stopped, and the chat in its slide, so a narrow window that's taken straight
+ * back to it (see `shouldStayOnSwitchboard`) reopens the same chat.
+ */
+const pageState: {
+  mounted: number;
+  leftAt: number | null;
+  selection: Selection;
+  slideOpen: boolean;
+} = { mounted: 0, leftAt: null, selection: null, slideOpen: false };
+
+/** When you last clicked, pressed a key or focused this window, or Switchboard acted for you. */
+const inputState = { lastAt: 0 };
+
+// How long after going back the page restores the chat it had open.
+const STAY_RESTORE_MS = 5_000;
+
+/**
+ * The thread something else opened in this narrow window while it showed
+ * Switchboard, kept for the bar that offers it, until shown or dismissed.
+ */
+const stayStore = (() => {
+  let current: { threadId: string; at: number } | null = null;
+  const listeners = new Set<Listener>();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+  return {
+    subscribe(listener: Listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    get: () => current,
+    set(threadId: string) {
+      current = { threadId, at: Date.now() };
+      notify();
+    },
+    clear() {
+      if (current === null) return;
+      current = null;
+      notify();
+    },
+  };
+})();
+
 // Commands run outside React, so the overlay keeps these current.
 const live: {
   navigate: BbNavigate | null;
@@ -563,6 +614,41 @@ function Overlay() {
       writeStorage("session", KEYS.lastRoute, null);
     }
   }, [context.threadId]);
+
+  // Keep a narrow window on Switchboard when something other than you moves it
+  // to a thread: bb sends `bb thread open` to every window. Your own clicks,
+  // key presses and bringing the window into focus count as yours for a moment.
+  useEffect(() => {
+    const mark = () => {
+      inputState.lastAt = Date.now();
+    };
+    window.addEventListener("pointerdown", mark, true);
+    window.addEventListener("keydown", mark, true);
+    window.addEventListener("focus", mark);
+    return () => {
+      window.removeEventListener("pointerdown", mark, true);
+      window.removeEventListener("keydown", mark, true);
+      window.removeEventListener("focus", mark);
+    };
+  }, []);
+  const stayEnabled = values?.stayOnSwitchboard !== false;
+  useEffect(() => {
+    const threadId = context.threadId;
+    if (threadId === null) return;
+    const now = Date.now();
+    const msSinceSwitchboard =
+      pageState.mounted > 0 ? 0 : pageState.leftAt === null ? null : now - pageState.leftAt;
+    const stay = shouldStayOnSwitchboard({
+      enabled: stayEnabled,
+      compact: window.matchMedia(COMPACT_QUERY).matches,
+      msSinceSwitchboard,
+      threadId,
+      msSinceInput: now - inputState.lastAt,
+    });
+    if (!stay) return;
+    stayStore.set(threadId);
+    navigate.toPluginPanel(PANEL_PATH, { replace: true });
+  }, [context.threadId, stayEnabled, navigate]);
 
   // With a split, the panes a plugin page has taken over and the thread each
   // showed before (see `holdDisplaced`). Kept per layout change, not per
@@ -1228,8 +1314,28 @@ function SwitchboardPage() {
   const [localOpen, setLocalOpen] = useState<ReadonlySet<string>>(() =>
     readStringSet(KEYS.localOpen),
   );
-  const [selection, setSelection] = useState<Selection>(null);
-  const [slideOpen, setSlideOpen] = useState(false);
+  // Taken straight back here a moment ago (see `shouldStayOnSwitchboard`):
+  // reopen the chat that was in the slide.
+  const [restore] = useState(() => {
+    const stayed = stayStore.get();
+    return stayed !== null && Date.now() - stayed.at < STAY_RESTORE_MS;
+  });
+  const [selection, setSelection] = useState<Selection>(() =>
+    restore ? pageState.selection : null,
+  );
+  const [slideOpen, setSlideOpen] = useState(() => restore && pageState.slideOpen);
+  useEffect(() => {
+    pageState.mounted += 1;
+    return () => {
+      pageState.mounted -= 1;
+      pageState.leftAt = Date.now();
+    };
+  }, []);
+  useEffect(() => {
+    pageState.selection = selection;
+    pageState.slideOpen = slideOpen;
+  }, [selection, slideOpen]);
+  const stayed = useSyncExternalStore(stayStore.subscribe, stayStore.get);
   const [wide, setWide] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1371,7 +1477,40 @@ function SwitchboardPage() {
   const openThread = useCallback((id: string) => {
     setSelection({ kind: "thread", id });
     setSlideOpen(true);
+    if (stayStore.get()?.threadId === id) stayStore.clear();
   }, []);
+  // The bar's Show: go to the thread, where bb shows what it opened in its
+  // panel. A click, so the window doesn't come straight back.
+  const showStayed = useCallback(() => {
+    const current = stayStore.get();
+    if (current === null) return;
+    stayStore.clear();
+    inputState.lastAt = Date.now();
+    navigate.toThread(current.threadId);
+  }, [navigate]);
+  const stayBar =
+    stayed === null ? null : (
+      <div className="sb-stay" role="status">
+        <div className="sb-lines">
+          <span className="sb-line sb-stay-title">
+            {byId.get(stayed.threadId)?.displayTitle ?? "A thread"}
+          </span>
+          <span className="sb-hint">An agent opened this in bb, so Switchboard stayed put.</span>
+        </div>
+        <button type="button" className="sb-button" onClick={showStayed}>
+          Show
+        </button>
+        <button
+          type="button"
+          className="sb-icon-button"
+          aria-label="Dismiss"
+          title="Dismiss"
+          onClick={() => stayStore.clear()}
+        >
+          ×
+        </button>
+      </div>
+    );
 
   // Opening a thread from Waiting reads it: bb's read state, and the seen map
   // for a thread whose pane finished unwatched.
@@ -1629,6 +1768,7 @@ function SwitchboardPage() {
             ))}
           </div>
         </div>
+        {stayBar}
         {view === "waiting" ? (
           waitingBody
         ) : rows.length === 0 ? (
@@ -1677,6 +1817,7 @@ function SwitchboardPage() {
             ) : null}
           </span>
         </div>
+        {wide ? null : stayBar}
         <div className="sb-slide-body">
           {selection?.kind === "thread" ? (
             <ThreadChat

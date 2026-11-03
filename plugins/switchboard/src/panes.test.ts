@@ -10,6 +10,7 @@ import {
   paneOwner,
   parseHeld,
   parseOpenRequest,
+  shouldStayOnSwitchboard,
   parsePaneRefs,
   parseStoredReport,
   parseSummary,
@@ -223,4 +224,19 @@ test("an open request needs a window and a thread", () => {
   assert.equal(parseOpenRequest({ windowId: "win_a" }), null);
   assert.equal(parseOpenRequest({ windowId: "", threadId: "thr_1" }), null);
   assert.equal(parseOpenRequest("open"), null);
+});
+
+test("a narrow window goes back to Switchboard when something else moved it to a thread", () => {
+  const base = { enabled: true, compact: true, msSinceSwitchboard: 40, threadId: "thr_a", msSinceInput: 60_000 };
+  assert.equal(shouldStayOnSwitchboard(base), true);
+  // You clicked, pressed a key or focused the window just before: your move.
+  assert.equal(shouldStayOnSwitchboard({ ...base, msSinceInput: 300 }), false);
+  // A wide window takes the thread as a split, as bb intends.
+  assert.equal(shouldStayOnSwitchboard({ ...base, compact: false }), false);
+  // It wasn't on Switchboard, or left it a while ago.
+  assert.equal(shouldStayOnSwitchboard({ ...base, msSinceSwitchboard: null }), false);
+  assert.equal(shouldStayOnSwitchboard({ ...base, msSinceSwitchboard: 5_000 }), false);
+  // Not a thread, or turned off.
+  assert.equal(shouldStayOnSwitchboard({ ...base, threadId: null }), false);
+  assert.equal(shouldStayOnSwitchboard({ ...base, enabled: false }), false);
 });

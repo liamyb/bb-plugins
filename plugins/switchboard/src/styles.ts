@@ -398,6 +398,28 @@ export const CSS = `
   font-weight: 600;
 }
 
+/* The bar after a narrow window came straight back to Switchboard. */
+.sb-stay {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0.75rem 0;
+  padding: 0.375rem 0.375rem 0.375rem 0.625rem;
+  border: 1px solid color-mix(in oklab, var(--primary) 40%, var(--border));
+  border-radius: calc(var(--radius, 0.5rem) * 0.75);
+  background: color-mix(in oklab, var(--primary) 8%, var(--card, var(--background, var(--canvas))));
+}
+.sb-slide .sb-stay {
+  margin-bottom: 0.25rem;
+}
+.sb-stay-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Ask the desk's blank-chat button, tucked beside it. */
 .sb-toolbar .sb-new {
   margin-left: -0.25rem;

@@ -112,10 +112,15 @@ places.
 The composer gets focus when the slide finishes. The motion is 240ms with bb's blade easing,
 and instant under "reduce motion".
 
-**A known gap.** When an agent puts a file in its side panel (`bb thread open <thread> <file>
---split right`), bb sends that to every open window, and each one goes to that thread. In the
-small window that means Switchboard gives way to the thread, with the file covering the window.
-Cmd+J hides the panel and Cmd+Shift+S comes back to Switchboard.
+**When an agent opens something.** An agent puts a file in its side panel with
+`bb thread open <thread> <file> --split right`, and bb sends that to every open window, each of
+which goes to that thread. A wide window takes it as a split, which is the point. The small
+window would lose Switchboard to it, so a window narrower than 768px that's showing Switchboard
+goes straight back, with a bar naming the thread: **Show** goes to the thread, where the file should be
+open in bb's panel (Cmd+J hides it, Cmd+Shift+S comes back), and × dismisses it. A chat that was
+open in the slide reopens. Anything you started yourself (a click, a key press, or bringing the
+window into focus in the second and a half before) is left alone, and `stayOnSwitchboard` turns
+it off. You may see the thread for a frame before the window comes back.
 
 ## Ask the desk, and New chat
 
@@ -187,6 +192,7 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `askLedgerFolder` | `automation/front-desk/ledger` | Where the front desk's daily ledger lives (`<YYYY-MM-DD>.jsonl`). A relative path is read from the `newChatEnvironmentId` checkout. Empty: no Today's asks |
 | `railBadge` | `true` | The count of threads asking you or with a reply on the rail icon |
 | `usageGauge` | `true` | The session and week usage rings in the title bar |
+| `stayOnSwitchboard` | `true` | A narrow window showing Switchboard goes straight back to it when something other than you opens a thread there, such as an agent's `bb thread open` |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.

@@ -302,3 +302,39 @@ export function parseOpenRequest(value: unknown): OpenRequest | null {
   if (typeof threadId !== "string" || threadId.length === 0) return null;
   return { windowId, threadId };
 }
+
+/**
+ * How long after your own click, key press or bringing the window into focus
+ * a move to a thread still counts as yours.
+ */
+export const STAY_INPUT_GRACE_MS = 1500;
+
+/** How recently the Switchboard page must have been showing for a move to count as leaving it. */
+export const STAY_LEFT_WITHIN_MS = 1000;
+
+/**
+ * Whether a narrow window should go straight back to Switchboard. bb sends
+ * `bb thread open` (how an agent puts a file in its side panel) to every
+ * window, and each one goes to that thread, so without this the small window
+ * would swap Switchboard for the thread. It goes back when the window is in
+ * bb's compact layout, it was showing Switchboard a moment ago, it's now on a
+ * thread, and nothing in this window started the move.
+ */
+export function shouldStayOnSwitchboard(input: {
+  enabled: boolean;
+  compact: boolean;
+  /** Milliseconds since the Switchboard page was last showing; 0 while it still is. */
+  msSinceSwitchboard: number | null;
+  threadId: string | null;
+  /** Milliseconds since the last click, key press or focus in this window. */
+  msSinceInput: number;
+}): boolean {
+  return (
+    input.enabled &&
+    input.compact &&
+    input.threadId !== null &&
+    input.msSinceSwitchboard !== null &&
+    input.msSinceSwitchboard <= STAY_LEFT_WITHIN_MS &&
+    input.msSinceInput >= STAY_INPUT_GRACE_MS
+  );
+}

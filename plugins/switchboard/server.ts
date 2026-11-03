@@ -157,6 +157,13 @@ export default function switchboard(bb: BbPluginApi): void {
         "Show how much of your plan's session and week you've used, with when each resets, on the right of Switchboard's title bar. The figures are bb's own, read once a minute while the page shows.",
       default: true,
     },
+    stayOnSwitchboard: {
+      type: "boolean",
+      label: "Keep a narrow window on Switchboard",
+      description:
+        "bb sends a thread an agent opens (bb thread open, which is how agents put a file in the side panel) to every window. A window under 768px that's showing Switchboard goes straight back to it, with a bar naming the thread and a Show button, unless you clicked, pressed a key or focused that window just before.",
+      default: true,
+    },
   });
 
   const kv = bb.storage.kv;
