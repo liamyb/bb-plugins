@@ -10,12 +10,14 @@
 // - The page (a nav panel) has three views. Panes lists the open threads
 //   with a state word each; All lists every active thread; Waiting lists the
 //   threads waiting on you, across every section, in four groups (Asking you,
-//   Replies, FYI, Working), with today's front desk asks under them. Clicking
-//   a row slides bb's ThreadChat open, and New chat starts one with bb's New
+//   Replies, FYI, Working), with today's front desk and its asks under them.
+//   Clicking a row slides bb's ThreadChat open. Ask the desk opens today's
+//   front desk thread there, and the + beside it starts a chat with bb's New
 //   thread composer. A thread's running workflows show as lines under it,
 //   read from its timeline while bb counts any.
 // - The rail icon carries a count of the threads asking you or with a reply,
-//   from the same rules.
+//   from the same rules, and the title bar shows the plan's session and week
+//   usage (src/usage.ts).
 //
 // The list rules are pure in src/current.ts, the Waiting rules in
 // src/waiting.ts and the pane rules in src/panes.ts; the CSS is in
@@ -81,6 +83,7 @@ import {
   askStatus,
   badgeFor,
   buildWaiting,
+  findDesk,
   formatAgo,
   hasUnread,
   ledgerFileName,
@@ -114,6 +117,7 @@ import {
   type PaneReport,
   type PanesSummary,
 } from "./src/panes";
+import { summariseUsage, usageLabel, usageTone, usageWord, type UsageWindow } from "./src/usage";
 import { CSS, SLIDE_MS, STYLE_ID, WIDE_MIN_PX } from "./src/styles";
 
 /** The nav panel's `path`: the page is at /plugins/<pluginId>/switchboard. */
@@ -128,6 +132,9 @@ const WORKFLOW_POLL_MS = 10_000;
 
 // How often today's front desk asks are re-read while the Waiting view shows.
 const LEDGER_POLL_MS = 60_000;
+
+// How often the usage gauge re-reads bb's plan limits while the page shows.
+const USAGE_POLL_MS = 60_000;
 
 // sessionStorage, like Pane Attention and Pane Keeper: a reload keeps the
 // state, a new window starts clean. The view, the seen map and the asks
@@ -208,9 +215,11 @@ interface Settings {
   newChatProjectId: string | undefined;
   newChatEnvironmentId: string | undefined;
   ttlSeconds: number;
+  frontDesk: string;
   relaySections: string;
   askLedgerFolder: string;
   railBadge: boolean;
+  usageGauge: boolean;
 }
 
 /** Settings as the page reads them. `values` is undefined until bb has loaded them. */
@@ -223,12 +232,14 @@ export function parseSettings(values: Record<string, unknown> | undefined): Sett
     newChatEnvironmentId: text(values?.newChatEnvironmentId),
     ttlSeconds: clampTtlSeconds(values?.paneReportTtlSeconds),
     // Until bb has loaded the settings, the defaults (server.ts).
+    frontDesk: typeof values?.frontDesk === "string" ? values.frontDesk : "Front desk",
     relaySections: typeof values?.relaySections === "string" ? values.relaySections : "Front desk",
     askLedgerFolder:
       typeof values?.askLedgerFolder === "string"
         ? values.askLedgerFolder
         : "automation/front-desk/ledger",
     railBadge: values?.railBadge !== false,
+    usageGauge: values?.usageGauge !== false,
   };
 }
 
@@ -1110,6 +1121,8 @@ function useLedger(folder: string | null, enabled: boolean): LedgerAsk[] | null 
 
 interface TodaysAsksProps {
   asks: readonly LedgerAsk[];
+  /** Today's front desk, shown first. */
+  desk: { id: string; title: string } | null;
   rows: ReadonlyMap<string, WaitingRow>;
   activeIds: ReadonlySet<string>;
   open: boolean;
@@ -1117,9 +1130,13 @@ interface TodaysAsksProps {
   onOpen(threadId: string): void;
 }
 
-/** What the front desk was asked today, newest first, with where each one is now. */
-function TodaysAsks({ asks, rows, activeIds, open, onToggle, onOpen }: TodaysAsksProps) {
+/**
+ * The front desk itself, then what it was asked today, newest first, with
+ * where each one is now.
+ */
+function TodaysAsks({ asks, desk, rows, activeIds, open, onToggle, onOpen }: TodaysAsksProps) {
   const newestFirst = useMemo(() => [...asks].reverse(), [asks]);
+  const deskStatus = desk === null ? null : askStatus(desk.id, rows, activeIds);
   return (
     <details
       className="sb-asks"
@@ -1131,6 +1148,24 @@ function TodaysAsks({ asks, rows, activeIds, open, onToggle, onOpen }: TodaysAsk
         <span className="sb-group-count">{asks.length}</span>
       </summary>
       <ul className="sb-ask-list">
+        {desk !== null && deskStatus !== null ? (
+          <li key="desk">
+            <button
+              type="button"
+              className="sb-ask"
+              data-desk=""
+              title={`Open ${desk.title}`}
+              aria-label={[desk.title, ASK_STATUS_LABEL[deskStatus]].filter(Boolean).join(", ")}
+              onClick={() => onOpen(desk.id)}
+            >
+              <span className="sb-ask-time">Desk</span>
+              <span className="sb-ask-text">{desk.title}</span>
+              <span className="sb-state" data-status={deskStatus}>
+                {ASK_STATUS_LABEL[deskStatus]}
+              </span>
+            </button>
+          </li>
+        ) : null}
         {newestFirst.map((ask, index) => {
           const status = askStatus(ask.threadId, rows, activeIds);
           const label = ASK_STATUS_LABEL[status];
@@ -1305,6 +1340,17 @@ function SwitchboardPage() {
     [byId, senders],
   );
 
+  // Today's front desk: the pinned thread in its section, so it follows the
+  // morning run's new desk each day.
+  const deskId = useMemo(
+    () => findDesk(threads, sections, settings.frontDesk),
+    [threads, sections, settings.frontDesk],
+  );
+  const desk = useMemo(
+    () => (deskId === null ? null : { id: deskId, title: byId.get(deskId)?.displayTitle ?? "Front desk" }),
+    [deskId, byId],
+  );
+
   // A new chat this page started drops out once bb no longer lists it
   // (archived, say). Only an id the list has carried at some point counts as
   // gone: a thread created a moment ago isn't in the sidebar's view yet.
@@ -1347,6 +1393,15 @@ function SwitchboardPage() {
     setSelection({ kind: "new" });
     setSlideOpen(true);
   }, []);
+  // Ask the desk: today's desk in the slide, its composer focused once the
+  // slide settles, read like any thread opened from Waiting.
+  const askDesk = useCallback(() => {
+    if (deskId === null) {
+      openNew();
+      return;
+    }
+    openFromWaiting(deskId, rowsById.get(deskId)?.group ?? null);
+  }, [deskId, openNew, openFromWaiting, rowsById]);
   const closeSlide = useCallback(() => setSlideOpen(false), []);
 
   // Focus the composer when the slide has finished, and let go of the chat
@@ -1500,9 +1555,10 @@ function SwitchboardPage() {
           })}
         </ul>
       )}
-      {asks !== null && asks.length > 0 ? (
+      {desk !== null || (asks !== null && asks.length > 0) ? (
         <TodaysAsks
-          asks={asks}
+          asks={asks ?? []}
+          desk={desk}
           rows={rowsById}
           activeIds={activeIds}
           open={asksOpen}
@@ -1522,9 +1578,32 @@ function SwitchboardPage() {
     >
       <div className="sb-list">
         <div className="sb-toolbar">
-          <button type="button" className="sb-button" data-primary="" onClick={openNew}>
-            New chat
-          </button>
+          {desk === null ? (
+            <button type="button" className="sb-button" data-primary="" onClick={openNew}>
+              New chat
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="sb-button"
+                data-primary=""
+                title={`Open ${desk.title} to ask it something`}
+                onClick={askDesk}
+              >
+                Ask the desk
+              </button>
+              <button
+                type="button"
+                className="sb-icon-button sb-new"
+                aria-label="New chat"
+                title="Start a blank chat"
+                onClick={openNew}
+              >
+                +
+              </button>
+            </>
+          )}
           <span className="sb-toolbar-spacer" />
           <div className="sb-views" role="group" aria-label="Show">
             {VIEWS.map((option) => (
@@ -1626,6 +1705,86 @@ function SwitchboardPage() {
   );
 }
 
+/** A small ring filled to `percent`. */
+function UsageRing({ percent }: { percent: number }) {
+  const radius = 5.5;
+  const length = 2 * Math.PI * radius;
+  return (
+    <svg className="sb-usage-ring" viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">
+      <circle className="sb-usage-track" cx="7" cy="7" r={radius} />
+      <circle
+        className="sb-usage-fill"
+        cx="7"
+        cy="7"
+        r={radius}
+        strokeDasharray={`${(length * percent) / 100} ${length}`}
+        transform="rotate(-90 7 7)"
+      />
+    </svg>
+  );
+}
+
+/**
+ * The usage gauge on the right of the title bar: the plan's session and week,
+ * each a ring and a percentage, with both reset times in the tooltip. Read
+ * from bb's plan limits now, once a minute while the window is visible, and
+ * whenever it comes back into view.
+ */
+function UsageGauge() {
+  const sdk = useSdk();
+  const { values } = useSettings();
+  const enabled = parseSettings(values as Record<string, unknown> | undefined).usageGauge;
+  const [windows, setWindows] = useState<UsageWindow[] | null>(null);
+  const now = useNow(60_000);
+  useEffect(() => {
+    if (!enabled) {
+      setWindows(null);
+      return;
+    }
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const read = async () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState === "visible") {
+        try {
+          const result = await sdk.system.usageLimits({ signal: controller.signal });
+          if (!controller.signal.aborted) setWindows(summariseUsage(result));
+        } catch {
+          // Keep the last figures; the next read tries again.
+        }
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(() => void read(), USAGE_POLL_MS);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void read();
+    };
+    void read();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [sdk, enabled]);
+  if (!enabled || windows === null) return null;
+  const label = usageLabel(windows, now);
+  return (
+    <div className="sb-usage" role="img" aria-label={`Usage: ${label}`} title={label}>
+      {windows.map((item) => (
+        <span
+          key={item.key}
+          className="sb-usage-item"
+          data-tone={usageTone(item.usedPercent) ?? undefined}
+        >
+          <UsageRing percent={item.usedPercent} />
+          <span className="sb-usage-value">{item.usedPercent}%</span>
+          <span className="sb-usage-word">{usageWord(item.key)}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Cmd+Shift+S. On the Switchboard page: go back to where you were. Anywhere
  * else: open the page.
@@ -1655,6 +1814,7 @@ export default definePluginApp((app) => {
     path: PANEL_PATH,
     component: SwitchboardPage,
     experimental_useBadge: useWaitingBadge,
+    headerContent: UsageGauge,
   });
   app.slots.experimental_appOverlay({
     id: "switchboard",

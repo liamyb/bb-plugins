@@ -122,6 +122,13 @@ export default function switchboard(bb: BbPluginApi): void {
       experimental_schema: z.number().int().min(MIN_TTL_SECONDS).max(MAX_TTL_SECONDS),
       default: DEFAULT_TTL_SECONDS,
     },
+    frontDesk: {
+      type: "string",
+      label: "Ask the desk: front desk section",
+      description:
+        "The section (name or id) whose pinned thread is today's front desk. The Ask the desk button opens it, and it heads the list of today's asks; a + beside the button starts a blank chat. With no pin, the section's newest thread. Empty, or no thread there: the button is a plain New chat.",
+      default: "Front desk",
+    },
     relaySections: {
       type: "string",
       label: "Waiting: sections that pass on your asks",
@@ -141,6 +148,13 @@ export default function switchboard(bb: BbPluginApi): void {
       label: "Count on the rail icon",
       description:
         "Show how many threads are asking you or have replied on Switchboard's rail icon, amber while one is asking.",
+      default: true,
+    },
+    usageGauge: {
+      type: "boolean",
+      label: "Usage gauge in the title bar",
+      description:
+        "Show how much of your plan's session and week you've used, with when each resets, on the right of Switchboard's title bar. The figures are bb's own, read once a minute while the page shows.",
       default: true,
     },
   });

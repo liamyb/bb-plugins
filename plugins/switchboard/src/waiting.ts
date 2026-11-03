@@ -212,22 +212,85 @@ export function relayCheck(
   sections: readonly { id: string; name: string }[],
   sectionOf: (threadId: string) => string | null | undefined,
 ): RelayCheck {
-  const wanted = setting
-    .split(",")
-    .map((part) => part.trim().toLowerCase())
-    .filter((part) => part.length > 0);
-  const relayIds = new Set(
-    sections
-      .filter((section) => wanted.includes(section.id.toLowerCase()) || wanted.includes(section.name.trim().toLowerCase()))
-      .map((section) => section.id),
-  );
-  for (const part of wanted) if (part.startsWith("sec_")) relayIds.add(part);
+  const relayIds = sectionIdsFor(setting, sections);
   return (threadId) => {
     if (relayIds.size === 0) return false;
     const sectionId = sectionOf(threadId);
     if (sectionId === undefined) return null;
     return sectionId !== null && relayIds.has(sectionId);
   };
+}
+
+/**
+ * The section ids a setting picks out: section names or ids, comma-separated,
+ * case-insensitive. An id that isn't among `sections` still counts.
+ */
+export function sectionIdsFor(
+  setting: string,
+  sections: readonly { id: string; name: string }[],
+): Set<string> {
+  const wanted = setting
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.length > 0);
+  const ids = new Set(
+    sections
+      .filter(
+        (section) =>
+          wanted.includes(section.id.toLowerCase()) ||
+          wanted.includes(section.name.trim().toLowerCase()),
+      )
+      .map((section) => section.id),
+  );
+  for (const part of wanted) if (part.startsWith("sec_")) ids.add(part);
+  return ids;
+}
+
+/** The fields of bb's `PluginSidebarThread` that finding the front desk reads. */
+export interface DeskFacts {
+  id: string;
+  parentThreadId: string | null;
+  sectionId: string | null;
+  isHidden: boolean;
+  isArchived: boolean;
+  isPinned: boolean;
+  pinnedAt: number | null;
+  createdAt: number;
+}
+
+/**
+ * Today's front desk: the pinned top-level thread in the desk section, the
+ * newest pin if there's more than one, or with none pinned the section's
+ * newest thread. Null when the setting names no section or the section has no
+ * active thread. The morning run pins each day's desk and archives the old
+ * one, so this follows it without a fixed id.
+ */
+export function findDesk(
+  threads: readonly DeskFacts[],
+  sections: readonly { id: string; name: string }[],
+  setting: string,
+): string | null {
+  const ids = sectionIdsFor(setting, sections);
+  if (ids.size === 0) return null;
+  const candidates = threads.filter(
+    (thread) =>
+      thread.parentThreadId === null &&
+      !thread.isHidden &&
+      !thread.isArchived &&
+      thread.sectionId !== null &&
+      ids.has(thread.sectionId),
+  );
+  const pinned = candidates.filter((thread) => thread.isPinned);
+  const pool = pinned.length > 0 ? pinned : candidates;
+  const when = (thread: DeskFacts) =>
+    pinned.length > 0 ? (thread.pinnedAt ?? 0) : thread.createdAt;
+  let best: DeskFacts | null = null;
+  for (const thread of pool) {
+    if (best === null || when(thread) > when(best) || (when(thread) === when(best) && thread.id > best.id)) {
+      best = thread;
+    }
+  }
+  return best?.id ?? null;
 }
 
 export interface WaitingRow {

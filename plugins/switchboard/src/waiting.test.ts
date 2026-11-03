@@ -5,6 +5,7 @@ import {
   askStatus,
   badgeFor,
   buildWaiting,
+  findDesk,
   formatAgo,
   hasUnread,
   judge,
@@ -16,11 +17,13 @@ import {
   parseSeen,
   parseTurnEvents,
   relayCheck,
+  sectionIdsFor,
   segmentTurns,
   stepPanes,
   tally,
   turnsWanted,
   unreadVerdict,
+  type DeskFacts,
   type RelayCheck,
   type TurnSegment,
   type WaitingFacts,
@@ -393,4 +396,69 @@ test("times since read short", () => {
   assert.equal(formatAgo(5 * 60_000), "5m");
   assert.equal(formatAgo(125 * 60_000), "2h");
   assert.equal(formatAgo(50 * 3_600_000), "2d");
+});
+
+const SECTIONS = [
+  { id: "sec_desk", name: "Front desk" },
+  { id: "sec_tools", name: "bb tooling" },
+];
+
+function desk(id: string, facts: Partial<DeskFacts> = {}): DeskFacts {
+  return {
+    id,
+    parentThreadId: null,
+    sectionId: "sec_desk",
+    isHidden: false,
+    isArchived: false,
+    isPinned: false,
+    pinnedAt: null,
+    createdAt: 1,
+    ...facts,
+  };
+}
+
+test("a section setting matches names or ids, and keeps an unknown id", () => {
+  assert.deepEqual([...sectionIdsFor("front desk", SECTIONS)], ["sec_desk"]);
+  assert.deepEqual([...sectionIdsFor(" SEC_TOOLS , Front desk", SECTIONS)].sort(), ["sec_desk", "sec_tools"]);
+  assert.deepEqual([...sectionIdsFor("sec_gone", SECTIONS)], ["sec_gone"]);
+  assert.equal(sectionIdsFor("", SECTIONS).size, 0);
+});
+
+test("today's desk is the pinned thread in the desk section", () => {
+  const threads = [
+    desk("thr_old", { createdAt: 50 }),
+    desk("thr_today", { isPinned: true, pinnedAt: 10, createdAt: 10 }),
+    desk("thr_tool", { sectionId: "sec_tools", isPinned: true, pinnedAt: 99 }),
+  ];
+  assert.equal(findDesk(threads, SECTIONS, "Front desk"), "thr_today");
+});
+
+test("with two pins the newest pin wins, and with none the newest thread", () => {
+  assert.equal(
+    findDesk(
+      [desk("thr_a", { isPinned: true, pinnedAt: 5 }), desk("thr_b", { isPinned: true, pinnedAt: 9 })],
+      SECTIONS,
+      "Front desk",
+    ),
+    "thr_b",
+  );
+  assert.equal(
+    findDesk([desk("thr_a", { createdAt: 5 }), desk("thr_b", { createdAt: 3 })], SECTIONS, "Front desk"),
+    "thr_a",
+  );
+});
+
+test("children, hidden and archived threads are never the desk", () => {
+  const threads = [
+    desk("thr_child", { parentThreadId: "thr_x", isPinned: true, pinnedAt: 9 }),
+    desk("thr_hidden", { isHidden: true, isPinned: true, pinnedAt: 8 }),
+    desk("thr_archived", { isArchived: true, isPinned: true, pinnedAt: 7 }),
+  ];
+  assert.equal(findDesk(threads, SECTIONS, "Front desk"), null);
+  assert.equal(findDesk([...threads, desk("thr_ok")], SECTIONS, "Front desk"), "thr_ok");
+});
+
+test("no desk when the setting is empty or the section is empty", () => {
+  assert.equal(findDesk([desk("thr_a")], SECTIONS, ""), null);
+  assert.equal(findDesk([desk("thr_a")], SECTIONS, "bb tooling"), null);
 });

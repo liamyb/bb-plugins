@@ -16,7 +16,8 @@ export const CSS = `
 .sb-page {
   --sb-slide-duration: ${SLIDE_MS}ms;
   --sb-slide-easing: var(--bb-blade-easing, cubic-bezier(0.22, 1, 0.36, 1));
-  --sb-list-width: 280px;
+  /* Wide enough for Ask the desk, its + and the view switch with a count. */
+  --sb-list-width: 352px;
   position: relative;
   display: flex;
   width: 100%;
@@ -47,8 +48,9 @@ export const CSS = `
 .sb-toolbar {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem 0.5rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
 }
@@ -390,6 +392,66 @@ export const CSS = `
 }
 .sb-state[data-status="working"] {
   color: var(--foreground, var(--ink));
+}
+/* Today's front desk, first in Today's asks. */
+.sb-ask[data-desk] .sb-ask-text {
+  font-weight: 600;
+}
+
+/* Ask the desk's blank-chat button, tucked beside it. */
+.sb-toolbar .sb-new {
+  margin-left: -0.25rem;
+  border: 1px solid var(--border);
+  font-size: 1.125rem;
+}
+
+/* The usage gauge on the right of the title bar. */
+.sb-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-right: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.sb-usage-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.sb-usage-ring {
+  flex: none;
+}
+.sb-usage-track,
+.sb-usage-fill {
+  fill: none;
+  stroke-width: 2;
+}
+.sb-usage-track {
+  stroke: var(--border);
+}
+.sb-usage-fill {
+  stroke: var(--primary);
+  stroke-linecap: round;
+}
+.sb-usage-value {
+  color: var(--foreground, var(--ink));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sb-usage-item[data-tone="warning"] .sb-usage-fill {
+  stroke: var(--warning, var(--destructive));
+}
+.sb-usage-item[data-tone="warning"] .sb-usage-value {
+  color: var(--warning-text, var(--warning, var(--destructive)));
+}
+.sb-usage-item[data-tone="bad"] .sb-usage-fill {
+  stroke: var(--destructive);
+}
+.sb-usage-item[data-tone="bad"] .sb-usage-value {
+  color: var(--destructive);
 }
 
 /* A workflow running in the thread above: a quieter line where a child would sit. */

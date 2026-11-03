@@ -1,6 +1,6 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view or the count on its rail icon, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, its Ask the desk button and usage gauge, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
@@ -53,10 +53,23 @@ thread:
   isn't an active thread is looked up with `threads.get` for its section; until then the row
   counts as a Reply.
 
-Today's asks: `<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read`
-every 60 seconds while the Waiting view shows. Relative folders resolve against the path of
-the `newChatEnvironmentId` environment. Each ask's status is its thread's Waiting group, else
-Read (active) or Archived.
+Today's asks: headed by today's front desk thread (below) with its status, then
+`<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read` every 60 seconds
+while the Waiting view shows. Relative folders resolve against the path of the
+`newChatEnvironmentId` environment. Each status is the thread's Waiting group, else Read
+(active) or Archived.
+
+## Ask the desk and the usage gauge
+
+Today's desk is `findDesk` in `src/waiting.ts`: the pinned, visible, top-level, active thread in
+the `frontDesk` section with the latest `pinnedAt`, or with none pinned the newest by
+`createdAt`. Ask the desk opens it in the slide (marking it read) with the composer focused; the
++ beside it is New chat. With no desk, the main button is New chat.
+
+The gauge is the nav panel's `headerContent` (right of the title bar), from
+`sdk.system.usageLimits()` (`GET /api/v1/system/usage-limits`): the `five-hour` and `weekly`
+windows without a `model`, for `claude-code` if its status is `ok`, else the first provider
+that is. Rules in `src/usage.ts`; read every 60 seconds while visible.
 
 The rail badge (`experimental_useBadge` on the nav panel) is Asking you plus Replies, tone
 `warning` while anything is asking, computed in every window. Setting `railBadge` turns it off.
@@ -89,11 +102,14 @@ background commands get no lines.
   composer's own choice.
 - `paneReportTtlSeconds` (number, default `120`, 10 to 600): how long a window's pane report
   counts after its last heartbeat. Windows re-report every quarter of this.
+- `frontDesk` (string, default `Front desk`): the section name or id whose pinned thread is
+  today's desk. Empty: no Ask the desk and no desk line.
 - `relaySections` (string, default `Front desk`): section names or ids, comma-separated, whose
   threads pass on the user's asks, so a reply to their hand-off counts as a Reply, not FYI.
 - `askLedgerFolder` (string, default `automation/front-desk/ledger`): the front desk ledger
   folder for Today's asks. Empty turns the list off.
 - `railBadge` (boolean, default `true`): the count on the rail icon.
+- `usageGauge` (boolean, default `true`): the session and week rings in the title bar.
 
 ## How panes cross windows
 
@@ -122,3 +138,9 @@ window.
 - The rail has no Switchboard icon: `bb settings ui get sidebar.visiblePluginPanels` must
   include `switchboard/switchboard`, or be null.
 - `bb plugin logs switchboard` shows window goodbyes and open-in-pane relays.
+- The small window left Switchboard for a thread, with a file covering it: an agent ran
+  `bb thread open <thread> <file> --split right`. bb broadcasts that to every client
+  (`notifyThreadOpen`, `broadcastToAllClients`) and each window goes to the thread; a narrow
+  one replaces its page. Cmd+J hides the panel, Cmd+Shift+S comes back.
+- Ask the desk opens New chat instead: no active top-level thread in the `frontDesk` section
+  (`bb thread list --section <id> --json`).

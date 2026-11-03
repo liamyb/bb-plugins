@@ -4,8 +4,9 @@ A compact view of the chats you've got going in bb. It lists the threads open in
 panes, in any bb window, with a state word against each one (Needs you, Working, Done, Idle),
 and clicking a row slides bb's own chat open in place so you can read and reply without leaving
 the view. A Waiting view gathers every thread that's waiting on you, in every section, and the
-rail icon counts the ones asking you or with a reply. A New chat button starts one on your
-project checkout.
+rail icon counts the ones asking you or with a reply. An Ask the desk button opens today's
+front desk thread, and the + beside it starts a blank chat on your project checkout. The title
+bar shows how much of your plan's session and week you've used.
 
 It's made for a small second bb window: Cmd+Shift+N for a new window, click the Switchboard
 icon in the rail, and size it to about 500 by 800. It works as a page in the main window too,
@@ -80,12 +81,13 @@ Switchboard, clears it. These are Pane Attention's rules, with the window's own 
 starts with a `[bb automation` envelope. Which turns you haven't read comes from the same log's
 `turn/completed` events against the time you last read the thread. The page reads up to 24 of
 those events per thread, only for threads that are unread or busy, and again only when the
-thread's attention time moves.
+thread's attention time moves or it starts or stops working.
 
-**Today's asks.** Under the groups, if the front desk's ledger for today exists
-(`askLedgerFolder`, one JSON line per ask with `time`, `ask` and `thread`), a fold-away list
-of what it was asked today, newest first, with where each ask's thread is now: Asking you,
-Reply, FYI, Working, Read or Archived. It's re-read every minute while the view shows.
+**Today's asks.** Under the groups, a fold-away list headed by today's front desk thread (see
+Ask the desk below), with its own state, so it's one click away. Below it, if the front desk's
+ledger for today exists (`askLedgerFolder`, one JSON line per ask with `time`, `ask` and
+`thread`), what it was asked today, newest first, with where each ask's thread is now: Asking
+you, Reply, FYI, Working, Read or Archived. It's re-read every minute while the view shows.
 
 **The rail badge.** Switchboard's rail icon shows the number of threads asking you plus
 replies, amber while any is asking, with the breakdown in its tooltip. It's worked out in every
@@ -100,7 +102,7 @@ Escape, or the back control, slides it away.
 
 - **Narrow page** (a 500px window): the chat slides over the whole list, with a back control
   in its header.
-- **Wide page** (about 700px or more): the list keeps a 280px column on the left and the chat
+- **Wide page** (about 700px or more): the list keeps a 352px column on the left and the chat
   slides in beside it. The list never hides, so you can watch the states change while you
   read.
 
@@ -110,12 +112,34 @@ places.
 The composer gets focus when the slide finishes. The motion is 240ms with bb's blade easing,
 and instant under "reduce motion".
 
-## New chat
+**A known gap.** When an agent puts a file in its side panel (`bb thread open <thread> <file>
+--split right`), bb sends that to every open window, and each one goes to that thread. In the
+small window that means Switchboard gives way to the thread, with the file covering the window.
+Cmd+J hides the panel and Cmd+Shift+S comes back to Switchboard.
 
-The New chat button slides open bb's own New thread composer, seeded with the project and
-environment from the settings below, so a chat started here lands where your other threads do
-rather than in a fresh worktree. Change either in the composer before sending. The thread
-opens in the slide as soon as it's created.
+## Ask the desk, and New chat
+
+**Ask the desk** slides today's front desk thread open with its composer focused, so an ask
+goes to the desk to route, with attachments and voice as usual. Today's desk is the pinned
+thread in the `frontDesk` section (the newest pin if there's more than one, or with none pinned
+the section's newest thread), so it follows the morning run's new desk each day without a fixed
+id. Opening it marks it read, like any row in Waiting.
+
+**The + beside it** is New chat: it slides open bb's own New thread composer, seeded with the
+project and environment from the settings below, so a chat started here lands where your other
+threads do rather than in a fresh worktree. Change either in the composer before sending. The
+thread opens in the slide as soon as it's created. With no desk to find (`frontDesk` empty, or
+no thread in that section), the main button is New chat instead.
+
+## Usage gauge
+
+On the right of the title bar, beside the close and panel buttons, two small rings show how
+much of your plan's current session and week you've used, amber from 80% and red from 95%.
+Hovering gives both reset times. The figures are bb's own plan limits
+(`system.usageLimits`, the same windows Usage Meter shows), for Claude Code if it's signed in,
+else the first provider that is. They're read when the page opens, once a minute while the
+window is visible, and whenever it comes back into view. A model's own weekly allowance, such
+as Fable's, isn't shown. `usageGauge` turns it off.
 
 ## Open in a pane
 
@@ -158,9 +182,11 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `newChatProjectId` | `proj_m7g3w6c5r8` | The project the New chat composer starts on. Set it to yours (`bb project list`), or empty for the composer's own choice |
 | `newChatEnvironmentId` | `env_82jgfihfwx` | The environment the New chat composer starts on, normally your project checkout (`bb environment list --project <id>`). Empty for the composer's own choice |
 | `paneReportTtlSeconds` | `120` | How long a window's pane report counts after its last heartbeat (10 to 600) |
+| `frontDesk` | `Front desk` | The section (name or id) whose pinned thread Ask the desk opens and Today's asks starts with. Empty: a plain New chat button and no desk line |
 | `relaySections` | `Front desk` | Section names or ids, comma-separated, whose threads pass on your asks: a reply to a turn one of them started counts as a reply, not FYI. Empty: every turn another thread starts is FYI |
 | `askLedgerFolder` | `automation/front-desk/ledger` | Where the front desk's daily ledger lives (`<YYYY-MM-DD>.jsonl`). A relative path is read from the `newChatEnvironmentId` checkout. Empty: no Today's asks |
 | `railBadge` | `true` | The count of threads asking you or with a reply on the rail icon |
+| `usageGauge` | `true` | The session and week usage rings in the title bar |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.
@@ -170,7 +196,7 @@ in Settings.
 - Install from a clone: `bb plugin install <path to plugins/switchboard> --yes`, then
   `bb plugin reload switchboard` after each edit. bb builds it itself, and the path install ran
   here with no `npm install` in the folder (its one dependency, zod, resolves from bb). A git
-  install installs zod itself. Needs bb 0.48 or later (the rail badge and the read calls).
+  install installs zod itself. Built and tested on bb 0.48.1; earlier versions weren't tried.
 - The rail icon: bb's rail only shows the panels in `sidebar.visiblePluginPanels`. If
   Switchboard isn't there, add `switchboard/switchboard` to that list with
   `bb settings ui set sidebar.visiblePluginPanels '[...]'`, or reset the setting to show every
@@ -180,7 +206,7 @@ in Settings.
 
 ## Tests
 
-`npm test` runs `src/panes.test.ts`, `src/current.test.ts` and `src/waiting.test.ts` on Node's
-own test runner (Node 23.6 or later). The pane, list and Waiting rules are pure; `app.tsx` and
-`server.ts` are the bb glue.
+`npm test` runs `src/panes.test.ts`, `src/current.test.ts`, `src/waiting.test.ts` and
+`src/usage.test.ts` on Node's own test runner (Node 23.6 or later). The pane, list, Waiting,
+desk and usage rules are pure; `app.tsx` and `server.ts` are the bb glue.
 `npm run typecheck` needs `npm install` first.
