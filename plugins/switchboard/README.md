@@ -6,7 +6,9 @@ and clicking a row slides bb's own chat open in place so you can read and reply 
 the view. A Waiting view gathers every thread that's waiting on you, in every section, and the
 rail icon counts the ones asking you or with a reply. An Ask the desk button opens today's
 front desk thread, and the + beside it starts a blank chat on your project checkout. The title
-bar shows how much of your plan's session and week you've used.
+bar shows how much of your plan's session and week you've used. In the small window, bb's side
+panel slides out beside the list rather than covering it, and links to other threads open in
+the slide.
 
 It's made for a small second bb window: Cmd+Shift+N for a new window, click the Switchboard
 icon in the rail, and size it to about 500 by 800. It works as a page in the main window too,
@@ -100,6 +102,11 @@ Click a row and bb's complete chat slides in: timeline, streaming, composer, att
 approvals and questions, with its own permission mode picker. Click another row to swap.
 Escape, or the back control, slides it away.
 
+A link to another thread in that chat opens the linked thread in the slide too, rather than
+taking the window off Switchboard. ← then reads "Back to <the chat you came from>" and steps back
+one chat at a time, then to the list; Escape still goes straight to the list. Cmd-click a link
+to open it the way bb does. `threadLinksInSlide` turns this off.
+
 - **Narrow page** (a 500px window): the chat slides over the whole list, with a back control
   in its header.
 - **Wide page** (about 700px or more): the list keeps a 352px column on the left and the chat
@@ -116,11 +123,72 @@ and instant under "reduce motion".
 `bb thread open <thread> <file> --split right`, and bb sends that to every open window, each of
 which goes to that thread. A wide window takes it as a split, which is the point. The small
 window would lose Switchboard to it, so a window narrower than 768px that's showing Switchboard
-goes straight back, with a bar naming the thread: **Show** goes to the thread, where the file should be
-open in bb's panel (Cmd+J hides it, Cmd+Shift+S comes back), and × dismisses it. A chat that was
-open in the slide reopens. Anything you started yourself (a click, a key press, or bringing the
-window into focus in the second and a half before) is left alone, and `stayOnSwitchboard` turns
-it off. You may see the thread for a frame before the window comes back.
+goes straight back, with a bar naming the thread. A chat that was open in the slide reopens.
+Anything you started yourself (a click, a key press, or bringing the window into focus in the
+second and a half before) is left alone, and `stayOnSwitchboard` turns it off. You may see the
+thread for a frame before the window comes back.
+
+The file the agent opened then comes over to Switchboard's own side panel, which slides out
+(below), and the bar reads "An agent opened <file> beside Switchboard". **Show** opens that
+thread in the slide, and × dismisses the bar. When there's no file to bring over, **Show** goes
+to the thread itself, where bb has the file open in its panel (Cmd+J hides it, Cmd+Shift+S comes
+back). Switchboard finds the file in bb's own record of the files each thread has opened
+(localStorage `bb.thread.recentItems-<thread>-1`), which isn't part of the plugin SDK: if bb
+changes it, the bar simply offers the thread as before.
+
+## The side panel slides out
+
+Under 768px bb's side panel covers the whole window. When it opens on Switchboard in a window
+that narrow (a file from the slide's chat, an agent's file, the panel button or Cmd+J), the
+window widens to the right instead, so the panel docks beside the list. The panel button and
+Cmd+J are handled by Switchboard there, so bb never shows the panel full-window first, and the
+list keeps its width the whole time the window widens or shrinks: only the space beside it
+changes. The list stays exactly
+where it was and the width it was: above 768px bb would normally show its icon rail and any
+other panes the window holds (a narrow window keeps them folded behind the one it shows), so
+while the panel's out Switchboard hides those with CSS, in that window only, and puts them back
+when it closes. The panel takes half the widened window, the same width as the list, unless
+you've dragged the divider. The window moves left if it would run off the screen.
+
+**The panel shows the chat's documents**, the way bb's panel shows the thread you're in. A
+chat's documents are the ones its thread has open in bb's own panel (Switchboard reads bb's saved
+panel state, so a document the thread opened in your main window counts) and the ones opened
+while it was in the slide: a link in that chat, or an agent's file for it. That covers file
+previews and file viewers' tabs, such as the PDF viewer's. Whether the panel's open is up to you.
+With it open, moving to another chat (by a row, a thread link or ←) closes the last chat's
+documents and opens this one's, or closes the panel, shrinking the window, when it has none.
+With it closed, nothing opens. Opening it on a chat shows that chat's documents. An agent's file
+stays beside whatever chat you're in while its bar is up: dismiss the bar and it goes, or press
+Show to move to its chat. With no chat in the slide, an agent's thread opens there with its file.
+With the list showing, nothing moves. Tabs already in the panel before Switchboard started
+following belong to no chat and close the first time a chat's documents are shown.
+
+Closing the panel (its button, Cmd+J or the last tab's ×) shrinks the window back to its old
+width and place, unless you've resized the window by hand in the meantime, which counts as
+wanting it that size. While it's widened, an agent's `bb thread open` still keeps it on
+Switchboard: bb adds that thread as a split pane beside the list, so Switchboard closes the pane
+with its own Close button and puts the file in its panel as another tab.
+
+The small window's other split panes are closed the first time the panel slides out. Narrow, bb
+only draws the pane in front, but once the window widens it builds every pane it holds, and a few
+long chats there took seconds. The chats themselves aren't touched; they just stop being open in
+that window.
+
+It works in bb's Mac app, which lets a page resize its window (`window.resizeTo`); a web browser
+won't, and there the panel behaves as bb has it. Hiding the rail, bb's sidebar button and the other panes relies on
+bb's own element names (`data-sidebar`, `data-split-resize-grid-root`), which aren't part of the
+plugin SDK: if bb renames them, they show again and the window widens to fit them. Reopening a
+chat's files reads bb's tab keys (`workspace-file-preview:<path>:<environment>`); a tab that
+isn't a workspace or thread-storage file is left where it is. The window widens in one step, not in a glide.
+If bb quits while the panel's out, the window reopens at the wider size. `slideOutPanel` turns
+it off. Each slide-out and shrink writes one line to the plugin log with how long its steps
+took (`bb plugin logs switchboard`). bb rebuilds the page as the window crosses 768px, and
+redrawing a long chat there took over three seconds in the Mac app, so the chat in the slide
+steps aside while the window widens or shrinks and is drawn again once the panel's settled. A
+still copy of it stays on screen meanwhile, and goes once the live chat has drawn, so the slide
+never shows blank. To watch it step by step, set
+localStorage `bb-plugin-switchboard:debug` to `1` in that window: each step is logged to the
+console and kept in `window.__switchboardLog`.
 
 ## Ask the desk, and New chat
 
@@ -193,6 +261,8 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `railBadge` | `true` | The count of threads asking you or with a reply on the rail icon |
 | `usageGauge` | `true` | The session and week usage rings in the title bar |
 | `stayOnSwitchboard` | `true` | A narrow window showing Switchboard goes straight back to it when something other than you opens a thread there, such as an agent's `bb thread open` |
+| `slideOutPanel` | `true` | In a window under 768px, the side panel slides out beside the list (the window widens) instead of covering it, and an agent's file comes over to it |
+| `threadLinksInSlide` | `true` | A link to another thread in the slide's chat opens that thread in the slide, with ← stepping back |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.
@@ -212,7 +282,8 @@ in Settings.
 
 ## Tests
 
-`npm test` runs `src/panes.test.ts`, `src/current.test.ts`, `src/waiting.test.ts` and
-`src/usage.test.ts` on Node's own test runner (Node 23.6 or later). The pane, list, Waiting,
-desk and usage rules are pure; `app.tsx` and `server.ts` are the bb glue.
+`npm test` runs `src/panes.test.ts`, `src/current.test.ts`, `src/waiting.test.ts`,
+`src/usage.test.ts`, `src/slideout.test.ts` and `src/panelfiles.test.ts` on Node's own test
+runner (Node 23.6 or later). The pane, list, Waiting, desk, usage, slide-out and panel-files
+rules are pure; `app.tsx` and `server.ts` are the bb glue.
 `npm run typecheck` needs `npm install` first.

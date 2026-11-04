@@ -227,12 +227,14 @@ test("an open request needs a window and a thread", () => {
 });
 
 test("a narrow window goes back to Switchboard when something else moved it to a thread", () => {
-  const base = { enabled: true, compact: true, msSinceSwitchboard: 40, threadId: "thr_a", msSinceInput: 60_000 };
+  const base = { enabled: true, compact: true, widened: false, msSinceSwitchboard: 40, threadId: "thr_a", msSinceInput: 60_000 };
   assert.equal(shouldStayOnSwitchboard(base), true);
   // You clicked, pressed a key or focused the window just before: your move.
   assert.equal(shouldStayOnSwitchboard({ ...base, msSinceInput: 300 }), false);
   // A wide window takes the thread as a split, as bb intends.
   assert.equal(shouldStayOnSwitchboard({ ...base, compact: false }), false);
+  // Unless it's only wide because Switchboard slid its panel out.
+  assert.equal(shouldStayOnSwitchboard({ ...base, compact: false, widened: true }), true);
   // It wasn't on Switchboard, or left it a while ago.
   assert.equal(shouldStayOnSwitchboard({ ...base, msSinceSwitchboard: null }), false);
   assert.equal(shouldStayOnSwitchboard({ ...base, msSinceSwitchboard: 5_000 }), false);

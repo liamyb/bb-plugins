@@ -25,6 +25,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -40,6 +41,8 @@ import {
   experimental_THREAD_ACTION_GROUPS as THREAD_ACTION_GROUPS,
   experimental_ThreadActionsMenu as ThreadActionsMenu,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
+  experimental_useAppPanel as useAppPanel,
+  experimental_usePanelTabs as usePanelTabs,
   experimental_usePluginId as usePluginId,
   experimental_useSidebarThreads as useSidebarThreads,
   useBbContext,
@@ -53,6 +56,8 @@ import {
   useSidebarThreadRowStatus,
   type BbNavigate,
   type ExperimentalBadge,
+  type ExperimentalPanelController,
+  type ExperimentalPanelTabs,
   type NewThreadRequest,
   type PluginSidebarSection,
   type PluginSidebarThread,
@@ -118,6 +123,35 @@ import {
   type PaneReport,
   type PanesSummary,
 } from "./src/panes";
+import {
+  AGENT_FILE_WINDOW_MS,
+  CHROME_CSS,
+  correctedWidth,
+  fileName,
+  firstGrowWidth,
+  fitOnScreen,
+  followTrail,
+  newestFileSince,
+  parseSlideOutRecord,
+  recentItemsKey,
+  threadIdFromHref,
+  untouched,
+  type RecentFile,
+  type SlideOutRecord,
+} from "./src/slideout";
+import {
+  EMPTY_MEMORY,
+  documentTab,
+  fileTarget,
+  forgetTabs,
+  parseMemory as parsePanelMemory,
+  planSync,
+  recordTabs,
+  threadPanelFiles,
+  threadPanelKey,
+  type FileTab,
+  type PanelMemory,
+} from "./src/panelfiles";
 import { summariseUsage, usageLabel, usageTone, usageWord, type UsageWindow } from "./src/usage";
 import { CSS, SLIDE_MS, STYLE_ID, WIDE_MIN_PX } from "./src/styles";
 
@@ -150,6 +184,8 @@ const KEYS = {
   view: "bb-plugin-switchboard:view",
   seen: "bb-plugin-switchboard:seen",
   asksOpen: "bb-plugin-switchboard:asks-open",
+  slideOut: "bb-plugin-switchboard:slide-out",
+  panelFiles: "bb-plugin-switchboard:panel-files",
 } as const;
 
 function readStorage(storage: "session" | "local", key: string): string | null {
@@ -222,6 +258,8 @@ interface Settings {
   railBadge: boolean;
   usageGauge: boolean;
   stayOnSwitchboard: boolean;
+  slideOutPanel: boolean;
+  threadLinksInSlide: boolean;
 }
 
 /** Settings as the page reads them. `values` is undefined until bb has loaded them. */
@@ -243,6 +281,8 @@ export function parseSettings(values: Record<string, unknown> | undefined): Sett
     railBadge: values?.railBadge !== false,
     usageGauge: values?.usageGauge !== false,
     stayOnSwitchboard: values?.stayOnSwitchboard !== false,
+    slideOutPanel: values?.slideOutPanel !== false,
+    threadLinksInSlide: values?.threadLinksInSlide !== false,
   };
 }
 
@@ -513,7 +553,8 @@ const pageState: {
   leftAt: number | null;
   selection: Selection;
   slideOpen: boolean;
-} = { mounted: 0, leftAt: null, selection: null, slideOpen: false };
+  trail: string[];
+} = { mounted: 0, leftAt: null, selection: null, slideOpen: false, trail: [] };
 
 /** When you last clicked, pressed a key or focused this window, or Switchboard acted for you. */
 const inputState = { lastAt: 0 };
@@ -524,9 +565,16 @@ const STAY_RESTORE_MS = 5_000;
 /**
  * The thread something else opened in this narrow window while it showed
  * Switchboard, kept for the bar that offers it, until shown or dismissed.
+ * `file` is the file its agent opened, once the page has looked: undefined
+ * while it's looking, null when there was none to bring over.
  */
+interface Stayed {
+  threadId: string;
+  at: number;
+  file: RecentFile | null | undefined;
+}
 const stayStore = (() => {
-  let current: { threadId: string; at: number } | null = null;
+  let current: Stayed | null = null;
   const listeners = new Set<Listener>();
   const notify = () => {
     for (const listener of listeners) listener();
@@ -540,7 +588,12 @@ const stayStore = (() => {
     },
     get: () => current,
     set(threadId: string) {
-      current = { threadId, at: Date.now() };
+      current = { threadId, at: Date.now(), file: undefined };
+      notify();
+    },
+    setFile(threadId: string, file: RecentFile | null) {
+      if (current === null || current.threadId !== threadId) return;
+      current = { ...current, file };
       notify();
     },
     clear() {
@@ -551,12 +604,195 @@ const stayStore = (() => {
   };
 })();
 
+/**
+ * The side panel sliding out of this window (see src/slideout.ts): idle,
+ * widening, out (widened, with the record of how to undo it), or shrinking
+ * back. Kept for the window's life, and in sessionStorage so a reload while
+ * the panel's out still knows to shrink back.
+ */
+type SlidePhase = "idle" | "growing" | "out" | "shrinking";
+const slideOut: {
+  phase: SlidePhase;
+  record: SlideOutRecord | null;
+  unsupported: boolean;
+  shrunkAt: number;
+  /** When the window last started or finished widening or shrinking. */
+  changedAt: number;
+} = (() => {
+  const record = parseSlideOutRecord(readJson(readStorage("session", KEYS.slideOut)));
+  const compact = window.matchMedia(COMPACT_QUERY).matches;
+  if (record !== null && !compact && untouched(window.outerWidth, record.grownWidth)) {
+    return { phase: "out", record, unsupported: false, shrunkAt: 0, changedAt: 0 };
+  }
+  if (record !== null) writeStorage("session", KEYS.slideOut, null);
+  return { phase: "idle", record: null, unsupported: false, shrunkAt: 0, changedAt: 0 };
+})();
+const slideOutListeners = new Set<Listener>();
+function subscribeSlideOut(listener: Listener): () => void {
+  slideOutListeners.add(listener);
+  return () => {
+    slideOutListeners.delete(listener);
+  };
+}
+
+// The page bb rebuilds while the window widens or shrinks reopens the chat
+// the slide had if it mounts within this long of the change.
+const SLIDE_RESTORE_MS = 4_000;
+
+// After shrinking back, bb can bring its compact panel back for a moment;
+// that's closed, not taken as a reason to widen again.
+const SHRINK_SETTLE_MS = 1000;
+
+function isCompact(): boolean {
+  return window.matchMedia(COMPACT_QUERY).matches;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** Resolves true once `test` holds, or false after `ms`. Timers, not frames: a hidden window still gets there. */
+async function waitFor(test: () => boolean, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (!test()) {
+    if (Date.now() >= until) return false;
+    await delay(40);
+  }
+  return true;
+}
+
+function screenBounds(): { availLeft: number; availWidth: number } {
+  const screen = window.screen as Screen & { availLeft?: number };
+  return { availLeft: screen.availLeft ?? 0, availWidth: screen.availWidth };
+}
+
+/** Moves and resizes the window, as Electron lets a page do; a web browser ignores it. */
+function setWindow(x: number, width: number): void {
+  if (x !== window.screenX) window.moveTo(x, window.screenY);
+  if (width !== window.outerWidth) window.resizeTo(width, window.outerHeight);
+}
+
+/**
+ * Hides bb's icon rail and sidebar, and the window's other split panes,
+ * while the panel's out (`CHROME_CSS`, only above 768px and only while a
+ * Switchboard page is on screen), so the widened window is the column and the
+ * panel. Not part of the plugin SDK: if bb renames these, they show, and the
+ * window widens to fit them.
+ */
+const CHROME_STYLE_ID = "bb-plugin-switchboard-slide-out";
+function setChromeHidden(hidden: boolean): void {
+  const existing = document.getElementById(CHROME_STYLE_ID);
+  if (!hidden) {
+    existing?.remove();
+    return;
+  }
+  if (existing !== null) return;
+  const style = document.createElement("style");
+  style.id = CHROME_STYLE_ID;
+  style.textContent = CHROME_CSS;
+  document.head.appendChild(style);
+}
+
+/**
+ * Closes the window's other split panes, keeping Switchboard's, one at a
+ * time with each pane's own Close button. A narrow window only draws the pane
+ * in front, but once it widens bb builds every pane it holds, and a few long
+ * chats there took seconds in the Mac app (Liam chose this, 4 Nov). The chats
+ * themselves aren't touched. Returns how many it closed.
+ */
+async function closeOtherPanes(): Promise<number> {
+  let closed = 0;
+  for (let round = 0; round < 12; round += 1) {
+    const other = [...document.querySelectorAll("[data-split-pane-id]")].find(
+      (pane) => pane.querySelector(".sb-page") === null,
+    );
+    const button = other?.querySelector<HTMLButtonElement>('button[aria-label="Close pane"]');
+    if (button == null) break;
+    button.click();
+    closed += 1;
+    await delay(0);
+  }
+  return closed;
+}
+
+/**
+ * Closes the split pane bb added for a thread, with that pane's own Close
+ * button: the SDK can read panes but not close them. False when it can't.
+ */
+function closePane(paneId: string): boolean {
+  const pane = document.querySelector(`[data-split-pane-id="${window.CSS.escape(paneId)}"]`);
+  const button = pane?.querySelector<HTMLButtonElement>('button[aria-label="Close pane"]');
+  if (button == null) return false;
+  button.click();
+  return true;
+}
+
+/** The on-screen button whose label starts with `label`, if there is one. */
+function visibleButton(label: string): HTMLButtonElement | undefined {
+  return [...document.querySelectorAll<HTMLButtonElement>("button")].find((candidate) => {
+    if (!(candidate.getAttribute("aria-label") ?? "").startsWith(label)) return false;
+    const rect = candidate.getBoundingClientRect();
+    return rect.width > 0 && rect.left >= 0 && rect.right <= window.innerWidth;
+  });
+}
+
+/**
+ * Presses bb's panel shortcut (⌘J, "panel.toggle") from code: bb listens for
+ * its shortcuts at window level. Only when bb's own panel button says ⌘J is
+ * still the shortcut, so a rebound key isn't pressed by mistake. Not part of
+ * the plugin SDK. True when it pressed it.
+ */
+function sendPanelShortcut(): boolean {
+  if (!/mac/i.test(navigator.platform)) return false;
+  const bound = [...document.querySelectorAll("button[aria-label]")].some((button) =>
+    /right panel \(⌘ ?J\)$/.test(button.getAttribute("aria-label") ?? ""),
+  );
+  if (!bound) return false;
+  document.body.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "j", code: "KeyJ", metaKey: true, bubbles: true, cancelable: true }),
+  );
+  return true;
+}
+
+/** Step-by-step notes on the slide-out, with localStorage `bb-plugin-switchboard:debug` set to 1. */
+function debugLog(...parts: unknown[]): void {
+  if (readStorage("local", "bb-plugin-switchboard:debug") === "1") {
+    const line = `${new Date().toISOString().slice(11, 23)} ${JSON.stringify(parts)}`;
+    console.log(`[switchboard] ${line}`);
+    const log = ((window as unknown as { __switchboardLog?: string[] }).__switchboardLog ??= []);
+    log.push(line);
+    if (log.length > 200) log.splice(0, log.length - 200);
+  }
+}
+
+function saveSlideOut(phase: SlidePhase, record: SlideOutRecord | null): void {
+  slideOut.phase = phase;
+  slideOut.record = record;
+  slideOut.changedAt = Date.now();
+  setChromeHidden(phase !== "idle");
+  if (phase === "idle") {
+    delete document.documentElement.dataset.switchboardSlide;
+    document.documentElement.style.removeProperty("--sb-slide-column");
+    applyTitleShift(null);
+  } else {
+    document.documentElement.dataset.switchboardSlide = phase;
+    if (record !== null) document.documentElement.style.setProperty("--sb-slide-column", `${record.column}px`);
+  }
+  for (const listener of slideOutListeners) listener();
+  writeStorage(
+    "session",
+    KEYS.slideOut,
+    phase === "out" && record !== null ? JSON.stringify(record) : null,
+  );
+}
+
 // Commands run outside React, so the overlay keeps these current.
 const live: {
   navigate: BbNavigate | null;
   pluginId: string | null;
   threadId: string | null;
-} = { navigate: null, pluginId: null, threadId: null };
+  note: ((message: string) => void) | null;
+} = { navigate: null, pluginId: null, threadId: null, note: null };
 
 /**
  * Best-effort "this window is closing", sent with keepalive so it can outlive
@@ -595,10 +831,14 @@ function Overlay() {
   useEffect(() => {
     live.navigate = navigate;
     live.pluginId = pluginId;
+    live.note = (message) => {
+      void rpc.call("note", { windowId, message: message.slice(0, 600) }).catch(() => undefined);
+    };
     return () => {
       live.navigate = null;
+      live.note = null;
     };
-  }, [navigate, pluginId]);
+  }, [navigate, pluginId, rpc, windowId]);
 
   // The thread this window last showed on a thread route, for the no-split
   // case: a plugin page (this one included) takes the single pane's place and
@@ -632,6 +872,8 @@ function Overlay() {
     };
   }, []);
   const stayEnabled = values?.stayOnSwitchboard !== false;
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
   useEffect(() => {
     const threadId = context.threadId;
     if (threadId === null) return;
@@ -641,13 +883,34 @@ function Overlay() {
     const stay = shouldStayOnSwitchboard({
       enabled: stayEnabled,
       compact: window.matchMedia(COMPACT_QUERY).matches,
+      widened: slideOut.phase === "out",
       msSinceSwitchboard,
       threadId,
       msSinceInput: now - inputState.lastAt,
     });
     if (!stay) return;
     stayStore.set(threadId);
-    navigate.toPluginPanel(PANEL_PATH, { replace: true });
+    if (window.matchMedia(COMPACT_QUERY).matches) {
+      navigate.toPluginPanel(PANEL_PATH, { replace: true });
+      return;
+    }
+    // Widened, bb adds the thread as a split beside Switchboard rather than
+    // swapping it in: close that pane, and Switchboard is what's left. bb's
+    // layout can arrive a moment after the route.
+    let cancelled = false;
+    const addedPane = () => {
+      const panes = layoutRef.current?.panes ?? [];
+      return panes.length > 1 ? panes.find((pane) => pane.threadId === threadId) : undefined;
+    };
+    void waitFor(() => addedPane() !== undefined, 600).then(() => {
+      if (cancelled) return;
+      const added = addedPane();
+      if (added !== undefined && closePane(added.paneId)) return;
+      navigate.toPluginPanel(PANEL_PATH, { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [context.threadId, stayEnabled, navigate]);
 
   // With a split, the panes a plugin page has taken over and the thread each
@@ -1297,6 +1560,765 @@ function readView(): View {
   return readStorage("local", KEYS.showAll) === "1" ? "all" : "waiting";
 }
 
+/**
+ * A still copy of the slide's chat, shown while the window widens or shrinks
+ * and until the live chat has redrawn: bb rebuilds the page as the window
+ * crosses 768px, and a long chat takes a second or more to draw again, which
+ * left the slide blank.
+ */
+interface ChatSnapshot {
+  node: HTMLElement;
+  /** Scroll offsets of the copied elements, by their order in the copy. */
+  scrolls: [number, number, number][];
+  textLength: number;
+}
+const snapshotStore = (() => {
+  let current: ChatSnapshot | null = null;
+  const listeners = new Set<Listener>();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+  return {
+    subscribe(listener: Listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    get: () => current,
+    set(next: ChatSnapshot | null) {
+      current = next;
+      notify();
+    },
+  };
+})();
+
+/** Copies the chat now in the slide, if there's one; returns a note of what it cost, for the log. */
+function captureChatSnapshot(): string | null {
+  const started = performance.now();
+  const body = slideLive.root?.querySelector(".sb-slide-body");
+  const chat = body?.querySelector(":scope > :not(.sb-chat-held):not(.sb-chat-snapshot)");
+  if (!(chat instanceof HTMLElement)) return null;
+  const scrolls: [number, number, number][] = [];
+  chat.querySelectorAll("*").forEach((element, index) => {
+    if (element.scrollTop > 0 || element.scrollLeft > 0) {
+      scrolls.push([index, element.scrollTop, element.scrollLeft]);
+    }
+  });
+  // A chat still loading (no text yet) isn't worth copying.
+  const textLength = chat.textContent?.length ?? 0;
+  if (textLength < 40) return null;
+  const node = chat.cloneNode(true) as HTMLElement;
+  snapshotStore.set({ node, scrolls, textLength });
+  return `copied chat (${node.getElementsByTagName("*").length} elements) ${Math.round(performance.now() - started)}ms`;
+}
+
+/**
+ * The copy, over the slide's body. Once the chat is live again, it stays
+ * until the live chat has drawn most of what the copy shows (or four
+ * seconds), then goes.
+ */
+function ChatSnapshotView({ snapshot, live }: { snapshot: ChatSnapshot; live: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const holder = ref.current;
+    if (holder === null) return;
+    // The copy itself the first time; a fresh one if bb rebuilt the page.
+    const copy = snapshot.node.isConnected ? (snapshot.node.cloneNode(true) as HTMLElement) : snapshot.node;
+    copy.inert = true;
+    holder.replaceChildren(copy);
+    const elements = copy.querySelectorAll("*");
+    for (const [index, top, left] of snapshot.scrolls) {
+      const element = elements[index];
+      if (element !== undefined) {
+        element.scrollTop = top;
+        element.scrollLeft = left;
+      }
+    }
+  }, [snapshot]);
+  useEffect(() => {
+    if (!live) return;
+    const holder = ref.current;
+    const until = Date.now() + 4000;
+    let timer = 0;
+    const check = () => {
+      const body = holder?.parentElement;
+      const chat = body?.querySelector(":scope > :not(.sb-chat-held):not(.sb-chat-snapshot)");
+      const drawn = chat?.textContent?.length ?? 0;
+      if (drawn >= snapshot.textLength * 0.6 || Date.now() >= until) {
+        if (snapshotStore.get() === snapshot) snapshotStore.set(null);
+        return;
+      }
+      timer = window.setTimeout(check, 100);
+    };
+    timer = window.setTimeout(check, 100);
+    return () => window.clearTimeout(timer);
+  }, [live, snapshot]);
+  return <div ref={ref} className="sb-chat-snapshot" aria-hidden="true" />;
+}
+
+/**
+ * What the slide-out works with, from whichever Switchboard page is showing.
+ * Crossing bb's 768px line rebuilds bb's layout, so the page that started
+ * widening the window isn't the one that finishes; these always point at the
+ * current one.
+ */
+const slideLive: {
+  tabs: ExperimentalPanelTabs | null;
+  panel: ExperimentalPanelController | null;
+  root: HTMLDivElement | null;
+  navigate: BbNavigate | null;
+} = { tabs: null, panel: null, root: null, navigate: null };
+
+function panelOpenNow(): boolean {
+  return slideLive.tabs?.open ?? false;
+}
+
+/**
+ * bb's panel is docked beside the page: what's on screen, which bb's open
+ * flag can lag behind. The panel's own box (`thread-detail-secondary-panel…`,
+ * which is zero wide while it's closed), since the page keeps its column's
+ * width while the window changes size.
+ */
+function panelBeside(): boolean {
+  if (isCompact()) return false;
+  return [...document.querySelectorAll('[data-panel-id^="thread-detail-secondary-panel"]')].some(
+    (panel) => panel.getBoundingClientRect().width > 100,
+  );
+}
+
+/**
+ * Switchboard's title in bb's header row (the row outside the side panel
+ * that names it). The narrow and wide layouts put the header row in
+ * different places (in the Mac app the wide one sits below the window's
+ * traffic lights), so while the panel's out the row is moved back to where
+ * the title was in the narrow window: `--sb-title-dx`/`--sb-title-dy`.
+ */
+function switchboardTitle(): Element | null {
+  for (const row of document.querySelectorAll('[data-testid="app-page-header-content-row"]')) {
+    if (row.closest("aside") !== null || row.getBoundingClientRect().width === 0) continue;
+    const title = [...row.querySelectorAll("*")].find(
+      (element) => element.childElementCount === 0 && element.textContent?.trim() === "Switchboard",
+    );
+    if (title !== undefined) return title;
+  }
+  return null;
+}
+
+/** Where the title (and the usage rings' right edge) were in the narrow window, measured just before widening. */
+let narrowTitle: { left: number; centreY: number; gaugeRight: number | null } | null = null;
+
+function usageGaugeRect(): DOMRect | null {
+  const gauge = [...document.querySelectorAll(".sb-usage")].find((element) => element.closest("aside") === null);
+  return gauge?.getBoundingClientRect() ?? null;
+}
+
+function noteNarrowTitle(): void {
+  const rect = switchboardTitle()?.getBoundingClientRect();
+  narrowTitle =
+    rect === undefined
+      ? null
+      : { left: rect.left, centreY: rect.top + rect.height / 2, gaugeRight: usageGaugeRect()?.right ?? null };
+}
+
+/**
+ * The last move that put the title back in place, kept (in localStorage, as
+ * it depends on bb's layout, not the window) so the next widen applies it
+ * before the window changes size and the title never leaves its place.
+ */
+const TITLE_SHIFT_KEY = "bb-plugin-switchboard:title-shift";
+interface TitleShift {
+  dx: number;
+  dy: number;
+  /** Extra right padding, so the usage rings stay where they were. */
+  dr: number;
+}
+function readTitleShift(): TitleShift | null {
+  const value = readJson(readStorage("local", TITLE_SHIFT_KEY));
+  if (typeof value !== "object" || value === null) return null;
+  const { dx, dy, dr } = value as Record<string, unknown>;
+  return typeof dx === "number" && typeof dy === "number"
+    ? { dx, dy, dr: typeof dr === "number" ? dr : 0 }
+    : null;
+}
+function applyTitleShift(shift: TitleShift | null): void {
+  const root = document.documentElement;
+  if (shift === null) {
+    root.style.removeProperty("--sb-title-dx");
+    root.style.removeProperty("--sb-title-dy");
+    root.style.removeProperty("--sb-title-dr");
+    return;
+  }
+  root.style.setProperty("--sb-title-dx", `${shift.dx}px`);
+  root.style.setProperty("--sb-title-dy", `${shift.dy}px`);
+  root.style.setProperty("--sb-title-dr", `${shift.dr}px`);
+}
+
+/**
+ * Moves the wide layout's title row so the title sits where it did in the
+ * narrow window, correcting whatever move is already applied; returns the
+ * move, for the log.
+ */
+function keepTitleInPlace(): string {
+  const rect = switchboardTitle()?.getBoundingClientRect();
+  if (narrowTitle === null || rect === undefined) return "title not found";
+  const current = readTitleShift() ?? { dx: 0, dy: 0, dr: 0 };
+  const applied = document.documentElement.style.getPropertyValue("--sb-title-dx") !== "";
+  const base = applied ? current : { dx: 0, dy: 0, dr: 0 };
+  const gauge = usageGaugeRect();
+  const shift: TitleShift = {
+    dx: Math.round(base.dx + narrowTitle.left - rect.left),
+    dy: Math.round(base.dy + narrowTitle.centreY - (rect.top + rect.height / 2)),
+    dr: Math.max(
+      0,
+      Math.round(
+        base.dr + (narrowTitle.gaugeRight !== null && gauge !== null ? gauge.right - narrowTitle.gaugeRight : 0),
+      ),
+    ),
+  };
+  if (shift.dx !== base.dx || shift.dy !== base.dy || shift.dr !== base.dr || !applied) applyTitleShift(shift);
+  writeStorage("local", TITLE_SHIFT_KEY, JSON.stringify(shift));
+  return `title moved ${shift.dx},${shift.dy}px, rings ${shift.dr}px`;
+}
+
+/** The box bb gives the page beside the panel (Switchboard's own page is pinned meanwhile). */
+function pageAreaRect(): DOMRect | null {
+  // bb's page area: `plugin-panel-main-<pane>` with one pane, inside
+  // `split-workspace-main-panel` with a split.
+  const area =
+    slideLive.root?.closest('[data-panel-id^="plugin-panel-main"]') ??
+    slideLive.root?.closest('[data-panel-id="split-workspace-main-panel"]') ??
+    document.querySelector('[data-panel-id="split-workspace-main-panel"]');
+  return area?.getBoundingClientRect() ?? slideLive.root?.getBoundingClientRect() ?? null;
+}
+
+/** Widens the window for the panel that just opened in the compact layout. */
+/**
+ * Shows a file tab Switchboard has just added beside the page. In the narrow
+ * window it widens first and opens the tab docked, rather than showing it
+ * full-window and then widening: bb rebuilds the page when the window crosses
+ * 768px, and the chat in the slide redraws each time, so once is quicker.
+ */
+function showPanelTab(key: string): void {
+  if (slideOut.phase === "idle" && isCompact() && !slideOut.unsupported) {
+    void growForPanel(key);
+    return;
+  }
+  slideLive.panel?.selectTab(key);
+}
+
+async function growForPanel(tabKey?: string): Promise<void> {
+  const started = performance.now();
+  const steps: string[] = [];
+  const mark = (step: string) => steps.push(`${step} ${Math.round(performance.now() - started)}ms`);
+  // Copy the chat before the page drops it (see `chatHeld`), and note where
+  // the title sits in the narrow header.
+  noteNarrowTitle();
+  applyTitleShift(readTitleShift());
+  const copied = captureChatSnapshot();
+  if (copied !== null) steps.push(copied);
+  saveSlideOut("growing", null);
+  // The chat in the slide's documents, not whatever the panel last showed.
+  const documentKey = await syncPanelContents({ mayClosePanel: false });
+  if (documentKey !== null) mark("documents");
+  const key = tabKey ?? documentKey ?? slideLive.tabs?.selectedKey ?? null;
+  const column = Math.round(slideLive.root?.clientWidth || window.innerWidth);
+  const narrowWidth = window.outerWidth;
+  const narrowX = window.screenX;
+  const scale = window.outerWidth / window.innerWidth || 1;
+  // An empty panel (bb's New tab page) never carries over to the docked
+  // layout, and bb keeps counting it as open for a second or more after the
+  // change, which holds up its Show button: close it first.
+  const empty = key === null || key.startsWith("new-tab:");
+  // Close the full-window panel first, so the window widens with the chat
+  // still showing and the panel arrives beside it, rather than bb's narrow
+  // panel stretching across the wider window while bb redraws.
+  if (panelOpenNow()) {
+    slideLive.panel?.close();
+    await waitFor(() => !panelOpenNow(), 300);
+  }
+  document.documentElement.style.setProperty("--sb-slide-column", `${column}px`);
+  // The page drops the slide's chat while the window changes layout (see
+  // `chatHeld`), so bb's rebuild at 768px doesn't redraw it: let that land.
+  await delay(30);
+  const first = fitOnScreen(narrowX, firstGrowWidth({ column, scale }), screenBounds());
+  setWindow(first.x, first.width);
+  if (!(await waitFor(() => !isCompact(), 1500))) {
+    // Not Electron, or the window couldn't grow: the panel as bb has it.
+    if (window.outerWidth === narrowWidth) slideOut.unsupported = true;
+    setWindow(narrowX, narrowWidth);
+    saveSlideOut("idle", null);
+    if (!panelOpenNow()) visibleButton("Show right panel")?.click();
+    noteTiming("slide-out gave up: the window didn't widen", steps);
+    return;
+  }
+  mark("widened");
+  // The window's hidden panes go, so the next widen doesn't build them again.
+  const closedPanes = await closeOtherPanes();
+  if (closedPanes > 0) mark(`closed ${closedPanes} hidden pane${closedPanes === 1 ? "" : "s"}`);
+  // Open it beside the column: by its tab, or (an empty panel, the New tab
+  // page, which bb won't select) with bb's shortcut or Show button.
+  if (!panelBeside() && key !== null && !empty) {
+    slideLive.panel?.selectTab(key);
+    await waitFor(panelBeside, 300);
+    mark(panelBeside() ? "reopened by tab" : "tab didn't reopen");
+  }
+  // For a second or so after the layout changes bb can still count the
+  // compact panel as open, which hides its Show button (or makes it read
+  // Hide): close it, then press Show, rather than waiting it out.
+  // Quickest: bb's own panel shortcut, while bb shows no button for a second
+  // or so after the change.
+  if (!panelBeside() && !panelOpenNow() && sendPanelShortcut()) {
+    await waitFor(panelBeside, 400);
+    mark(panelBeside() ? "shortcut" : "shortcut, not docked");
+  }
+  const until = Date.now() + 2000;
+  while (!panelBeside() && Date.now() < until) {
+    const show = visibleButton("Show right panel");
+    if (show !== undefined) {
+      show.click();
+      await waitFor(panelBeside, 500);
+      mark(panelBeside() ? "show pressed" : "show pressed, not docked");
+      continue;
+    }
+    const hide = visibleButton("Hide right panel");
+    if (hide !== undefined) {
+      hide.click();
+      await waitFor(() => panelBeside() || visibleButton("Show right panel") !== undefined, 300);
+      mark("stale hide pressed");
+      continue;
+    }
+    // Neither button shows while bb thinks a collapsed panel is open: close
+    // it through the plugin API, which brings its Show button back.
+    if (panelOpenNow()) {
+      slideLive.panel?.close();
+      await waitFor(() => panelBeside() || visibleButton("Show right panel") !== undefined, 300);
+      mark("stale panel closed");
+      continue;
+    }
+    await delay(40);
+  }
+  if (!panelBeside()) {
+    // It wouldn't open beside the page: back to how it was.
+    setWindow(narrowX, narrowWidth);
+    await waitFor(isCompact, 1500);
+    slideOut.shrunkAt = Date.now();
+    saveSlideOut("idle", null);
+    noteTiming("slide-out gave up: the panel wouldn't dock", steps);
+    return;
+  }
+  mark("docked");
+  // bb animates the panel open: measure once the column stops moving.
+  const rect = await settledRect();
+  if (rect !== null) {
+    const target = correctedWidth({
+      outerWidth: window.outerWidth,
+      innerWidth: window.innerWidth,
+      scale: window.outerWidth / window.innerWidth || 1,
+      contentLeft: rect.left,
+      column: rect.width,
+      wantColumn: column,
+    });
+    if (target !== null && Math.abs(target - window.outerWidth) > 4) {
+      const fitted = fitOnScreen(window.screenX, target, screenBounds());
+      setWindow(fitted.x, fitted.width);
+      mark(`corrected ${Math.round(rect.width)}px column to ${column}px`);
+    }
+  }
+  saveSlideOut("out", {
+    narrowWidth,
+    narrowX,
+    moved: window.screenX !== narrowX,
+    grownWidth: window.outerWidth,
+    column,
+  });
+  steps.push(keepTitleInPlace());
+  noteTiming(`slide-out to ${window.outerWidth}px`, steps);
+  window.setTimeout(noteHeaderBand, 600);
+}
+
+/** The page area's box once it has stopped changing size (bb's panel animates), or null. */
+async function settledRect(): Promise<DOMRect | null> {
+  let last = pageAreaRect();
+  const until = Date.now() + 500;
+  let still = 0;
+  while (Date.now() < until && still < 2) {
+    await delay(40);
+    const next = pageAreaRect();
+    still = next !== null && last !== null && Math.abs(next.width - last.width) < 0.5 ? still + 1 : 0;
+    last = next;
+  }
+  return last;
+}
+
+/**
+ * Once per page load, what's drawn in the top-left corner of the widened
+ * window, to the plugin log: the Mac app lays its title row out differently
+ * from a browser, and this is the only way to see it.
+ */
+let headerNoted = false;
+function noteHeaderBand(): void {
+  if (headerNoted) return;
+  headerNoted = true;
+  const items: string[] = [];
+  for (const element of document.querySelectorAll("button, a, [role=button], [data-testid]")) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 1 || rect.top > 120 || rect.left > 420) continue;
+    const label =
+      element.getAttribute("aria-label") ??
+      element.getAttribute("data-testid") ??
+      element.getAttribute("title") ??
+      (element.textContent ?? "").trim().slice(0, 24);
+    items.push(`${element.tagName.toLowerCase()} "${label}" at ${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}w`);
+  }
+  live.note?.(`title row: ${items.slice(0, 20).join("; ")}`);
+}
+
+/**
+ * One line in Switchboard's plugin log (`bb plugin logs switchboard`) with how
+ * long each step of a slide-out took, so the Mac app's timings can be read
+ * without opening its console.
+ */
+function noteTiming(what: string, steps: readonly string[]): void {
+  const line = `${what}: ${steps.join(", ")}`;
+  debugLog(line);
+  live.note?.(line);
+}
+
+/** Shrinks the window back once the panel's closed, unless you've resized it by hand. */
+async function shrinkForPanel(): Promise<void> {
+  const record = slideOut.record;
+  if (record === null || !untouched(window.outerWidth, record.grownWidth)) {
+    // Resized by hand: it stays that size, back to bb's own layout.
+    debugLog("not shrinking", { record, width: window.outerWidth });
+    saveSlideOut("idle", null);
+    return;
+  }
+  const started = performance.now();
+  const copied = captureChatSnapshot();
+  saveSlideOut("shrinking", record);
+  await delay(30);
+  setWindow(record.moved ? record.narrowX : window.screenX, record.narrowWidth);
+  await waitFor(isCompact, 1500);
+  const narrowed = Math.round(performance.now() - started);
+  // bb can bring the compact panel back as it changes layout: close it, or
+  // it covers the window.
+  if (await waitFor(panelOpenNow, 300)) slideLive.panel?.close();
+  slideOut.shrunkAt = Date.now();
+  saveSlideOut("idle", null);
+  noteTiming(`shrank to ${window.outerWidth}px`, [...(copied === null ? [] : [copied]), `narrowed ${narrowed}ms`]);
+}
+
+/**
+ * The side panel sliding out of a narrow window. When this page's side panel
+ * opens in bb's compact layout (where it would cover the window), the window
+ * widens to the right so the panel docks beside the page, and the page's
+ * column keeps its width; when the panel closes, the window shrinks back,
+ * unless you've resized it by hand meanwhile. Rules in src/slideout.ts.
+ * Returns whether the panel is open, for tests to read off the page.
+ */
+function useSlideOut(
+  enabled: boolean,
+  rootRef: { current: HTMLDivElement | null },
+): { open: boolean; phase: SlidePhase } {
+  const tabs = usePanelTabs();
+  const panel = useAppPanel();
+  const navigate = useBbNavigate();
+  slideLive.tabs = tabs;
+  slideLive.panel = panel;
+  slideLive.navigate = navigate;
+  useEffect(() => {
+    const root = rootRef.current;
+    slideLive.root = root;
+    // A reload while the panel was out: keep bb's chrome hidden.
+    if (slideOut.phase !== "idle") setChromeHidden(true);
+    return () => {
+      if (slideLive.root === root) slideLive.root = null;
+    };
+  }, [rootRef]);
+  const phase = useSyncExternalStore(subscribeSlideOut, () => slideOut.phase);
+
+  // Opening the panel in the narrow window: widen first and open it docked,
+  // rather than letting bb show it full-window and then widening.
+  useEffect(() => {
+    if (!enabled) return;
+    const takes = () =>
+      slideOut.phase === "idle" &&
+      !slideOut.unsupported &&
+      isCompact() &&
+      !panelOpenNow() &&
+      (slideLive.root?.isConnected ?? false);
+    const onClick = (event: MouseEvent) => {
+      const button = event.target instanceof Element ? event.target.closest("button[aria-label]") : null;
+      if (button === null || !(button.getAttribute("aria-label") ?? "").startsWith("Show right panel")) return;
+      if (!takes()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void growForPanel();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.isTrusted || !event.metaKey || event.shiftKey || event.altKey || event.ctrlKey) return;
+      if (event.key.toLowerCase() !== "j" || !takes()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void growForPanel();
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled || slideOut.unsupported) return;
+    debugLog("panel", { open: tabs.open, phase, compact: isCompact() });
+    if (phase === "idle" && tabs.open && isCompact()) {
+      if (Date.now() - slideOut.shrunkAt < SHRINK_SETTLE_MS) panel.close();
+      else void growForPanel();
+      return;
+    }
+    if (phase === "out" && !tabs.open) {
+      // A beat first: a panel that's only switching tabs reopens at once.
+      const timer = window.setTimeout(() => {
+        if (slideOut.phase === "out" && !panelOpenNow()) void shrinkForPanel();
+      }, 120);
+      return () => window.clearTimeout(timer);
+    }
+  }, [enabled, tabs.open, phase, panel]);
+  return { open: tabs.open, phase };
+}
+
+
+/**
+ * The panel's files, per chat in the slide (rules in src/panelfiles.ts),
+ * kept for the window's life and in sessionStorage for a reload. `agent` is
+ * the file an agent's `bb thread open` is bringing over, so its tab is filed
+ * under that agent's thread. Tabs Switchboard closes itself are listed in
+ * `closedByUs`, so they stay remembered; changes while `quietUntil` hasn't
+ * passed are Switchboard's own, not yours.
+ */
+const panelState: {
+  memory: PanelMemory;
+  firstSeenAt: number | null;
+  closedByUs: Set<string>;
+  quietUntil: number;
+  agent: { threadId: string; path: string } | null;
+  /** The chat the panel last followed: survives bb rebuilding the page. */
+  lastView: { view: string | null; keep: string | null } | null;
+  /** The chat in the slide now, and an agent's thread whose bar is up. */
+  view: string | null;
+  keep: string | null;
+} = {
+  memory: (() => {
+    try {
+      return parsePanelMemory(readJson(readStorage("session", KEYS.panelFiles)));
+    } catch {
+      return EMPTY_MEMORY;
+    }
+  })(),
+  firstSeenAt: null,
+  closedByUs: new Set(),
+  quietUntil: 0,
+  agent: null,
+  lastView: null,
+  view: null,
+  keep: null,
+};
+
+// Tabs already in the panel when Switchboard first looks, within this long,
+// belong to no chat.
+const LEGACY_TABS_MS = 1500;
+
+function savePanelMemory(next: PanelMemory): void {
+  if (next === panelState.memory) return;
+  panelState.memory = next;
+  writeStorage("session", KEYS.panelFiles, JSON.stringify(next));
+}
+
+/** The panel's document tabs: file previews and file openers' tabs (the PDF viewer's, say). */
+function fileTabsOf(tabs: ExperimentalPanelTabs | null): FileTab[] {
+  return (tabs?.tabs ?? []).flatMap((tab) => {
+    const document = documentTab(tab.key, tab.detail, { threadId: null, environmentId: undefined });
+    return document === null ? [] : [document];
+  });
+}
+
+/**
+ * Brings the panel's tabs in line with the chat in the slide: closes other
+ * chats' documents (not an agent's whose bar is up), opens this chat's (its
+ * thread's documents in bb's own panel, then the ones opened for it here),
+ * and with `mayClosePanel` closes the panel when that leaves nothing.
+ * Resolves with the key of one of the chat's documents once it's open, to
+ * show, or null.
+ */
+async function syncPanelContents(options: { mayClosePanel: boolean }): Promise<string | null> {
+  const view = panelState.view;
+  if (view === null || slideLive.tabs === null) return null;
+  const threadFiles = threadPanelFiles(readStorage("local", threadPanelKey(view)), view);
+  const plan = planSync({
+    view,
+    tabs: fileTabsOf(slideLive.tabs),
+    memory: panelState.memory,
+    keep: panelState.keep,
+    threadFiles,
+  });
+  if (plan.close.length > 0 || plan.open.length > 0) {
+    debugLog("panel follows", { view, keep: panelState.keep, close: plan.close, open: plan.open });
+    panelState.quietUntil = Date.now() + 1500;
+    for (const key of plan.close) {
+      panelState.closedByUs.add(key);
+      slideLive.panel?.closeTab(key);
+    }
+    for (const target of plan.open) slideLive.navigate?.experimental_openFilePreview({ target, location: null });
+  }
+  if (plan.closePanel) {
+    if (options.mayClosePanel && panelOpenNow()) slideLive.panel?.close();
+    return null;
+  }
+  const paths = [...threadFiles, ...(panelState.memory.files[view] ?? [])].map((file) => file.path);
+  const path = plan.open.at(-1)?.path ?? paths.at(-1);
+  if (path === undefined) return null;
+  await waitFor(() => fileTabsOf(slideLive.tabs).some((tab) => tab.path === path), 1000);
+  return fileTabsOf(slideLive.tabs).find((tab) => tab.path === path)?.key ?? null;
+}
+
+/**
+ * The side panel shows the chat in the slide's documents, as bb's panel shows
+ * the thread you're in. Whether it's open is yours: with it open, moving to
+ * another chat swaps the documents (or closes it when the chat has none);
+ * with it closed, nothing opens; opening it shows the chat's documents (done
+ * before the window widens, in `growForPanel`). An agent's file stays beside
+ * whatever chat you're in while its bar is up. With no chat in the slide,
+ * nothing moves.
+ */
+function usePanelFollowsSlide(
+  enabled: boolean,
+  view: string | null,
+  stayed: Stayed | null,
+  environmentOf: (threadId: string) => string | undefined,
+): void {
+  const tabs = usePanelTabs();
+  const phase = useSyncExternalStore(subscribeSlideOut, () => slideOut.phase);
+  const environmentRef = useRef(environmentOf);
+  environmentRef.current = environmentOf;
+  const fileTabs = useMemo(() => fileTabsOf(tabs), [tabs]);
+  const signature = fileTabs.map((tab) => tab.key).join("\n");
+  const keep = stayed !== null && stayed.file ? stayed.threadId : null;
+  panelState.view = enabled ? view : null;
+  panelState.keep = keep;
+
+  // Note the tabs that came and went.
+  useEffect(() => {
+    if (!enabled) return;
+    panelState.firstSeenAt ??= Date.now();
+    let memory = forgetTabs(panelState.memory, fileTabs, panelState.closedByUs);
+    for (const key of panelState.closedByUs) {
+      if (!fileTabs.some((tab) => tab.key === key)) panelState.closedByUs.delete(key);
+    }
+    memory = recordTabs(memory, fileTabs, {
+      view,
+      agent: panelState.agent,
+      legacy: Date.now() - panelState.firstSeenAt < LEGACY_TABS_MS,
+      targetFor: (tab, owner) =>
+        fileTarget(tab, { threadId: owner, environmentId: environmentRef.current(owner) }),
+    });
+    if (memory !== panelState.memory) debugLog("panel files", memory);
+    savePanelMemory(memory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, signature, view]);
+
+  // Moving to another chat with the panel open swaps its documents.
+  useEffect(() => {
+    if (!enabled || view === null) return;
+    if (phase === "growing" || phase === "shrinking") return;
+    const previous = panelState.lastView;
+    const moved = previous === null || previous.view !== view || previous.keep !== keep;
+    panelState.lastView = { view, keep };
+    if (!tabs.open) return;
+    const timer = window.setTimeout(() => {
+      if (!panelOpenNow()) return;
+      void syncPanelContents({ mayClosePanel: moved });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [enabled, view, keep, phase, tabs.open]);
+}
+
+/**
+ * After an agent's `bb thread open` sent this window back to Switchboard
+ * (see `stayStore`), the file it opened, from bb's recent items for that
+ * thread, opened in Switchboard's own side panel instead, which then slides
+ * out. bb writes the item once the thread view has opened the file, so it's
+ * looked for for a couple of seconds.
+ */
+function useStayedFile(
+  enabled: boolean,
+  stayed: Stayed | null,
+  environmentOf: (threadId: string) => string | undefined,
+  onFile: (threadId: string) => void,
+): void {
+  const navigate = useBbNavigate();
+  const environmentRef = useRef(environmentOf);
+  environmentRef.current = environmentOf;
+  const onFileRef = useRef(onFile);
+  onFileRef.current = onFile;
+  const threadId = stayed?.threadId ?? null;
+  const at = stayed?.at ?? 0;
+  const looking = stayed !== null && stayed.file === undefined;
+  useEffect(() => {
+    if (!looking || threadId === null) return;
+    if (!enabled) {
+      stayStore.setFile(threadId, null);
+      return;
+    }
+    let cancelled = false;
+    const until = Date.now() + 2500;
+    const look = () => {
+      if (cancelled) return;
+      const file = newestFileSince(
+        readStorage("local", recentItemsKey(threadId)),
+        at - AGENT_FILE_WINDOW_MS,
+      );
+      if (file === null) {
+        if (Date.now() < until) window.setTimeout(look, 150);
+        else stayStore.setFile(threadId, null);
+        return;
+      }
+      const environmentId = environmentRef.current(threadId);
+      const target =
+        file.source === "thread-storage"
+          ? ({ kind: "thread-storage", threadId, path: file.path } as const)
+          : environmentId === undefined
+            ? null
+            : ({ kind: "workspace", environmentId, path: file.path } as const);
+      // Its tab belongs to the agent's thread, not the chat in the slide.
+      if (target !== null) panelState.agent = { threadId, path: file.path };
+      const opened =
+        target !== null && navigate.experimental_openFilePreview({ target, location: null });
+      debugLog("stayed file", { threadId, file, target, opened, open: panelOpenNow() });
+      stayStore.setFile(threadId, opened ? file : null);
+      if (!opened) return;
+      onFileRef.current(threadId);
+      // In the compact layout bb adds the tab without showing the panel:
+      // select it, which does, and the panel slides out.
+      // A file tab, or a file opener's (a PDF opens in the PDF viewer's).
+      const tabFor = () => fileTabsOf(slideLive.tabs).find((tab) => tab.path === file.path);
+      void waitFor(() => tabFor() !== undefined || panelOpenNow(), 1500).then(() => {
+        const tab = tabFor();
+        // Not `cancelled`: recording the file re-runs this effect, which cancels.
+        if (stayStore.get()?.threadId !== threadId || tab === undefined || panelOpenNow()) return;
+        showPanelTab(tab.key);
+        debugLog("stayed file shown", { key: tab.key });
+      });
+    };
+    look();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, looking, threadId, at, navigate]);
+}
+
 /** The Switchboard page. */
 function SwitchboardPage() {
   const rpc = useRpc<typeof rpcContract>();
@@ -1316,14 +2338,23 @@ function SwitchboardPage() {
   );
   // Taken straight back here a moment ago (see `shouldStayOnSwitchboard`):
   // reopen the chat that was in the slide.
+  // Or bb rebuilt its layout as the window widened or shrank for the side panel.
   const [restore] = useState(() => {
     const stayed = stayStore.get();
-    return stayed !== null && Date.now() - stayed.at < STAY_RESTORE_MS;
+    if (stayed !== null && Date.now() - stayed.at < STAY_RESTORE_MS) return true;
+    return (
+      slideOut.phase === "growing" ||
+      slideOut.phase === "shrinking" ||
+      Date.now() - slideOut.changedAt < SLIDE_RESTORE_MS
+    );
   });
   const [selection, setSelection] = useState<Selection>(() =>
     restore ? pageState.selection : null,
   );
   const [slideOpen, setSlideOpen] = useState(() => restore && pageState.slideOpen);
+  // The chats you followed links from to reach the one in the slide, oldest
+  // first: ← steps back through them before closing the slide.
+  const [trail, setTrail] = useState<string[]>(() => (restore ? pageState.trail : []));
   useEffect(() => {
     pageState.mounted += 1;
     return () => {
@@ -1334,7 +2365,8 @@ function SwitchboardPage() {
   useEffect(() => {
     pageState.selection = selection;
     pageState.slideOpen = slideOpen;
-  }, [selection, slideOpen]);
+    pageState.trail = trail;
+  }, [selection, slideOpen, trail]);
   const stayed = useSyncExternalStore(stayStore.subscribe, stayStore.get);
   const [wide, setWide] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
@@ -1457,6 +2489,29 @@ function SwitchboardPage() {
     [deskId, byId],
   );
 
+  // The side panel slides out of a narrow window, and a file an agent opened
+  // comes over to it.
+  const slide = useSlideOut(settings.slideOutPanel, rootRef);
+  // While the window widens or shrinks for the panel, the chat waits: bb
+  // rebuilds the page as the window crosses 768px, and redrawing a long chat
+  // there took seconds in the Mac app. It's drawn once the panel's settled.
+  const chatHeld = slide.phase === "growing" || slide.phase === "shrinking";
+  const snapshot = useSyncExternalStore(snapshotStore.subscribe, snapshotStore.get);
+  const environmentOf = useCallback(
+    (threadId: string) => byId.get(threadId)?.environment?.id ?? undefined,
+    [byId],
+  );
+  // With no chat in the slide, an agent's file brings its thread with it.
+  const openThreadRef = useRef<(threadId: string) => void>(() => undefined);
+  const onAgentFile = useCallback((threadId: string) => {
+    if (pageState.slideOpen && pageState.selection?.kind === "thread") return;
+    openThreadRef.current(threadId);
+  }, []);
+  useStayedFile(settings.slideOutPanel, stayed, environmentOf, onAgentFile);
+  // The panel's files follow the chat in the slide.
+  const slideView = slideOpen && selection?.kind === "thread" ? selection.id : null;
+  usePanelFollowsSlide(settings.slideOutPanel, slideView, stayed, environmentOf);
+
   // A new chat this page started drops out once bb no longer lists it
   // (archived, say). Only an id the list has carried at some point counts as
   // gone: a thread created a moment ago isn't in the sidebar's view yet.
@@ -1474,20 +2529,34 @@ function SwitchboardPage() {
     }
   }, [status, byId, localOpen]);
 
-  const openThread = useCallback((id: string) => {
+  // A chat in the slide. From a row it starts afresh; following a link keeps
+  // the trail back.
+  const showThread = useCallback((id: string) => {
     setSelection({ kind: "thread", id });
     setSlideOpen(true);
     if (stayStore.get()?.threadId === id) stayStore.clear();
   }, []);
-  // The bar's Show: go to the thread, where bb shows what it opened in its
-  // panel. A click, so the window doesn't come straight back.
+  const openThread = useCallback(
+    (id: string) => {
+      setTrail([]);
+      showThread(id);
+    },
+    [showThread],
+  );
+  // The bar's Show: the thread in the slide when its file came over to this
+  // page's panel; otherwise the thread itself, where bb shows the file. A
+  // click, so the window doesn't come straight back.
   const showStayed = useCallback(() => {
     const current = stayStore.get();
     if (current === null) return;
+    if (current.file) {
+      openThread(current.threadId);
+      return;
+    }
     stayStore.clear();
     inputState.lastAt = Date.now();
     navigate.toThread(current.threadId);
-  }, [navigate]);
+  }, [navigate, openThread]);
   const stayBar =
     stayed === null ? null : (
       <div className="sb-stay" role="status">
@@ -1495,7 +2564,11 @@ function SwitchboardPage() {
           <span className="sb-line sb-stay-title">
             {byId.get(stayed.threadId)?.displayTitle ?? "A thread"}
           </span>
-          <span className="sb-hint">An agent opened this in bb, so Switchboard stayed put.</span>
+          <span className="sb-hint">
+            {stayed.file
+              ? `An agent opened ${fileName(stayed.file.path)} beside Switchboard.`
+              : "An agent opened this in bb, so Switchboard stayed put."}
+          </span>
         </div>
         <button type="button" className="sb-button" onClick={showStayed}>
           Show
@@ -1511,14 +2584,14 @@ function SwitchboardPage() {
         </button>
       </div>
     );
+  openThreadRef.current = openThread;
 
   // Opening a thread from Waiting reads it: bb's read state, and the seen map
   // for a thread whose pane finished unwatched.
-  const openFromWaiting = useCallback(
+  const readThread = useCallback(
     (id: string, group: WaitingGroup | null) => {
       const thread = byId.get(id);
       setOpened(group === null ? null : { id, group });
-      openThread(id);
       if (thread === undefined) return;
       seenStore.mark(id, thread.latestAttentionAt, activeIds);
       const finished = new Set(summary.finishedThreadIds);
@@ -1526,7 +2599,27 @@ function SwitchboardPage() {
         void sdk.threads.markRead({ threadId: id }).catch(() => undefined);
       }
     },
-    [byId, openThread, activeIds, summary.finishedThreadIds, sdk],
+    [byId, activeIds, summary.finishedThreadIds, sdk],
+  );
+  const openFromWaiting = useCallback(
+    (id: string, group: WaitingGroup | null) => {
+      openThread(id);
+      readThread(id, group);
+    },
+    [openThread, readThread],
+  );
+  // A thread link clicked in the slide's chat: that thread in the slide, read
+  // like one opened from Waiting, with the chat you came from on the trail.
+  const followLink = useCallback(
+    (id: string) => {
+      const current = selection?.kind === "thread" ? selection.id : null;
+      debugLog("follow link", { current, id });
+      if (current === id) return;
+      setTrail((before) => followTrail(before, current, id));
+      showThread(id);
+      readThread(id, rowsById.get(id)?.group ?? null);
+    },
+    [selection, showThread, readThread, rowsById],
   );
   const openNew = useCallback(() => {
     setSelection({ kind: "new" });
@@ -1541,7 +2634,53 @@ function SwitchboardPage() {
     }
     openFromWaiting(deskId, rowsById.get(deskId)?.group ?? null);
   }, [deskId, openNew, openFromWaiting, rowsById]);
-  const closeSlide = useCallback(() => setSlideOpen(false), []);
+  const closeSlide = useCallback(() => {
+    setSlideOpen(false);
+    setTrail([]);
+  }, []);
+  const stepBackTitle =
+    trail.length === 0 ? null : (byId.get(trail[trail.length - 1] ?? "")?.displayTitle ?? "the last chat");
+
+  // Thread links in the slide's chat open in the slide rather than taking the
+  // window to the thread. Caught on the way down, before bb's own handler; a
+  // Cmd-, Ctrl-, Shift- or Alt-click is left to bb.
+  const slideBodyRef = useRef<HTMLDivElement>(null);
+  const followRef = useRef(followLink);
+  followRef.current = followLink;
+  useEffect(() => {
+    const body = slideBodyRef.current;
+    if (body === null || !settings.threadLinksInSlide) return;
+    const onClick = (event: MouseEvent) => {
+      debugLog("slide click", {
+        target: event.target instanceof Element ? event.target.tagName : String(event.target),
+        prevented: event.defaultPrevented,
+        button: event.button,
+        href: event.target instanceof Element ? event.target.closest("a[href]")?.getAttribute("href") : null,
+      });
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (anchor === null || !body.contains(anchor)) return;
+      const id = threadIdFromHref(anchor.getAttribute("href") ?? "", window.location.origin);
+      if (id === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      followRef.current(id);
+    };
+    body.addEventListener("click", onClick, true);
+    return () => body.removeEventListener("click", onClick, true);
+  }, [settings.threadLinksInSlide]);
+
+  // ←: back along the links you followed, then back to the list.
+  const goBack = useCallback(() => {
+    const previous = trail.at(-1);
+    if (previous === undefined) {
+      closeSlide();
+      return;
+    }
+    setTrail(trail.slice(0, -1));
+    showThread(previous);
+  }, [trail, closeSlide, showThread]);
 
   // Focus the composer when the slide has finished, and let go of the chat
   // once it has slid away. transitionend does it; a timer covers reduced
@@ -1714,6 +2853,8 @@ function SwitchboardPage() {
       className="sb-page"
       data-slide-open={slideOpen ? "" : undefined}
       data-wide={wide ? "" : undefined}
+      data-panel={slide.open ? "open" : "closed"}
+      data-slide-phase={slide.phase}
     >
       <div className="sb-list">
         <div className="sb-toolbar">
@@ -1803,11 +2944,18 @@ function SwitchboardPage() {
           <button
             type="button"
             className="sb-icon-button sb-back"
-            data-narrow-only={wide ? undefined : ""}
-            aria-label={wide ? "Close the chat" : "Back to the list"}
-            onClick={closeSlide}
+            data-narrow-only={wide || stepBackTitle !== null ? undefined : ""}
+            aria-label={
+              stepBackTitle !== null
+                ? `Back to ${stepBackTitle}`
+                : wide
+                  ? "Close the chat"
+                  : "Back to the list"
+            }
+            title={stepBackTitle !== null ? `Back to ${stepBackTitle}` : undefined}
+            onClick={goBack}
           >
-            {wide ? "×" : "←"}
+            {wide && stepBackTitle === null ? "×" : "←"}
           </button>
           <span className="sb-slide-title">
             {selection?.kind === "thread" ? (
@@ -1818,8 +2966,13 @@ function SwitchboardPage() {
           </span>
         </div>
         {wide ? null : stayBar}
-        <div className="sb-slide-body">
-          {selection?.kind === "thread" ? (
+        <div className="sb-slide-body" ref={slideBodyRef}>
+          {selection?.kind === "thread" && snapshot !== null ? (
+            <ChatSnapshotView snapshot={snapshot} live={!chatHeld} />
+          ) : null}
+          {selection?.kind === "thread" && chatHeld ? (
+            <div className="sb-chat-held" aria-busy="true" />
+          ) : selection?.kind === "thread" ? (
             <ThreadChat
               key={selection.id}
               threadId={selection.id}
@@ -1871,11 +3024,15 @@ function UsageRing({ percent }: { percent: number }) {
  * from bb's plan limits now, once a minute while the window is visible, and
  * whenever it comes back into view.
  */
+// The last usage figures, so a header bb rebuilds (as the window widens for
+// the panel) shows them at once rather than going blank while it re-reads.
+let lastUsage: UsageWindow[] | null = null;
+
 function UsageGauge() {
   const sdk = useSdk();
   const { values } = useSettings();
   const enabled = parseSettings(values as Record<string, unknown> | undefined).usageGauge;
-  const [windows, setWindows] = useState<UsageWindow[] | null>(null);
+  const [windows, setWindows] = useState<UsageWindow[] | null>(() => lastUsage);
   const now = useNow(60_000);
   useEffect(() => {
     if (!enabled) {
@@ -1889,7 +3046,10 @@ function UsageGauge() {
       if (document.visibilityState === "visible") {
         try {
           const result = await sdk.system.usageLimits({ signal: controller.signal });
-          if (!controller.signal.aborted) setWindows(summariseUsage(result));
+          if (!controller.signal.aborted) {
+            lastUsage = summariseUsage(result);
+            setWindows(lastUsage);
+          }
         } catch {
           // Keep the last figures; the next read tries again.
         }

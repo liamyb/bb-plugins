@@ -317,12 +317,15 @@ export const STAY_LEFT_WITHIN_MS = 1000;
  * `bb thread open` (how an agent puts a file in its side panel) to every
  * window, and each one goes to that thread, so without this the small window
  * would swap Switchboard for the thread. It goes back when the window is in
- * bb's compact layout, it was showing Switchboard a moment ago, it's now on a
- * thread, and nothing in this window started the move.
+ * bb's compact layout (or is only wide because Switchboard widened it for the
+ * side panel), it was showing Switchboard a moment ago, it's now on a thread,
+ * and nothing in this window started the move.
  */
 export function shouldStayOnSwitchboard(input: {
   enabled: boolean;
   compact: boolean;
+  /** Switchboard widened this narrow window for its side panel (see slideout.ts). */
+  widened: boolean;
   /** Milliseconds since the Switchboard page was last showing; 0 while it still is. */
   msSinceSwitchboard: number | null;
   threadId: string | null;
@@ -331,7 +334,7 @@ export function shouldStayOnSwitchboard(input: {
 }): boolean {
   return (
     input.enabled &&
-    input.compact &&
+    (input.compact || input.widened) &&
     input.threadId !== null &&
     input.msSinceSwitchboard !== null &&
     input.msSinceSwitchboard <= STAY_LEFT_WITHIN_MS &&

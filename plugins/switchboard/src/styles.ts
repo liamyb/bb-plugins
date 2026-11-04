@@ -398,6 +398,26 @@ export const CSS = `
   font-weight: 600;
 }
 
+/* The slide's chat, held back while the window widens or shrinks for the panel,
+   with a still copy of it on top until the live chat has drawn again. */
+.sb-chat-held {
+  height: 100%;
+}
+.sb-slide-body > .sb-chat-snapshot {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--background, var(--canvas));
+}
+.sb-chat-snapshot > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* The bar after a narrow window came straight back to Switchboard. */
 .sb-stay {
   display: flex;

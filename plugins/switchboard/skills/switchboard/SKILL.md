@@ -1,6 +1,6 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, its Ask the desk button and usage gauge, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, its Ask the desk button and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
@@ -74,6 +74,90 @@ that is. Rules in `src/usage.ts`; read every 60 seconds while visible.
 The rail badge (`experimental_useBadge` on the nav panel) is Asking you plus Replies, tone
 `warning` while anything is asking, computed in every window. Setting `railBadge` turns it off.
 
+## Thread links and the slide-out panel
+
+Rules pure in `src/slideout.ts`; the glue is `useSlideOut`, `useStayedFile` and the slide's
+click listener in `app.tsx`.
+
+- **Thread links:** a capture-phase click listener on `.sb-slide-body` catches a plain left
+  click on an `a[href]` whose path has `/threads/thr_…` (`threadIdFromHref`), prevents bb's
+  navigation and opens that thread in the slide, read like one opened from Waiting. The chat it
+  came from goes on a trail (`followTrail`); ← steps back along it ("Back to <title>"), then
+  closes the slide. Escape and opening a row clear the trail. Modifier clicks are left to bb.
+  Setting `threadLinksInSlide`.
+- **Slide-out:** when the page's panel opens (`experimental_usePanelTabs().open`) in bb's compact
+  layout (under 768px), `growForPanel` adds `CHROME_CSS` (above 768px, while a `.sb-page` is on
+  screen: hides `[data-sidebar=gap]`, `[data-sidebar=panel]`, the sidebar trigger overlay and any
+  sidebar button (the Mac app draws one in the title row, over Switchboard's title), and
+  every child of a non-panel-group `[data-split-resize-grid-root]` that doesn't hold `.sb-page`,
+  with the one that does set to `flex: 1`), calls `window.resizeTo` (Electron honours it; bb's
+  main process has no `content-bounds-updated` handler) to twice the column (`firstGrowWidth`),
+  reopens the panel docked (the compact panel doesn't carry over: `selectTab(key)`, else bb's
+  visible "Show right panel" button once bb's open flag has dropped), then corrects the width so
+  the column is what it was (`correctedWidth`). bb's "Maximize pane" isn't used: it hides the
+  side panel too. Once widened, `closeOtherPanes` closes every other split pane in the window
+  with its own Close button (Liam's call, 4 Nov): bb mounts all of a window's panes above 768px,
+  and four long chats hidden there made the widen take 3.4s in the Mac app. If the panel won't dock, the window goes back. Phase is in
+  `slideOut` (idle, growing, out, shrinking) and sessionStorage `bb-plugin-switchboard:slide-out`.
+  Closing the panel while out shrinks the window back (`shrinkForPanel`) unless its width moved
+  more than 8px (resized by hand); the CSS goes when the phase is idle again. Crossing 768px makes bb rebuild the page, so the slide-out
+  works through module-level `slideLive` refs, and a page mounted within 4s of a change restores
+  the slide's chat and trail. Setting `slideOutPanel`.
+- **The panel shows the chat's documents** (`src/panelfiles.ts`, `usePanelFollowsSlide`,
+  `syncPanelContents`): document tabs are file previews and file openers' plugin tabs whose
+  params carry `{path, source}` (`documentTab`; bb opens PDFs in the `pdf-preview` plugin's tab).
+  A chat's documents are its thread's own in bb (`threadPanelFiles` over localStorage
+  `bb.thread.fixedPanelTabsState-<thread>-1`, secondary.tabs `workspace-file-preview`,
+  `thread-storage-file-preview` and `plugin-panel` with `paramsJson`) plus the ones filed under it
+  here: a tab is filed under the chat in the slide when it appeared, or the agent's thread for an
+  agent's file (`panelState.agent`); tabs seen within 1.5s of Switchboard first looking belong to
+  no chat. Memory is in sessionStorage `bb-plugin-switchboard:panel-files`. Open or closed is
+  yours: with the panel open, a move to another chat closes other chats' documents (except the
+  agent's whose bar is up) and opens this chat's, closing the panel when nothing's left; with it
+  closed, nothing happens; `growForPanel` syncs first, so opening the panel shows the chat's
+  documents. The list moves nothing.
+- **Agent files:** after a stay (below), `useStayedFile` reads localStorage
+  `bb.thread.recentItems-<thread>-1` for a file opened in the last 10s, opens it with
+  `navigate.experimental_openFilePreview` (workspace target from the thread's environment, or
+  thread-storage), then selects its tab, since bb adds it without showing the panel. The bar
+  then names the file and Show opens the thread in the slide. While widened, the stay rule also
+  applies (`widened` in `shouldStayOnSwitchboard`): bb adds the thread as a split, which is closed
+  with that pane's own Close button (`[data-split-pane-id=<paneId>]`).
+- **No in-between layouts:** in the narrow window a capture-phase click on bb's "Show right
+  panel" button and a trusted Cmd+J keydown are taken by Switchboard (`growForPanel`), so bb
+  never opens its full-window panel first; a panel bb did open full-window is closed before the
+  window widens. While the phase isn't idle, `.sb-page` is pinned to `--sb-slide-column` (CSS),
+  so its own wide layout never shows, with the panel colour beside it. `panelBeside` reads bb's
+  panel box (`[data-panel-id^="thread-detail-secondary-panel"]` wider than 100px), and the width
+  correction measures `split-workspace-main-panel`.
+- **Title row:** before widening, `noteNarrowTitle` records where the "Switchboard" title sits in
+  the narrow header; once out, `keepTitleInPlace` sets `--sb-title-dx`/`--sb-title-dy` so the wide
+  header row (`app-page-header-content-row` outside any aside: padding-left and `translate`) puts
+  the title back there. In the Mac app the wide row otherwise sits about 20pt lower, under the
+  traffic lights. With one pane, bb's page area is `plugin-panel-main-<pane>`, not
+  `split-workspace-main-panel`. The move is kept in localStorage
+  (`bb-plugin-switchboard:title-shift`) and applied before the window widens, so the title never
+  leaves its place after the first time; the row's `transition` is off, and the `header` holding
+  it is pinned to `--sb-slide-column` like the page. `--sb-title-dr` is right padding that keeps
+  the usage rings in place once the row's own "Show right panel" button goes (bb drops it about
+  100ms after the window widens, when the panel docks), so it only applies while that button is
+  gone (`:not(:has(…))`); applied earlier, the rings jumped left and back.
+- **Timings:** every slide-out and shrink logs its steps to the plugin log through the `note`
+  RPC (`bb plugin logs switchboard`, lines like `win_…: slide-out to 1000px: widened 208ms,
+  docked 968ms`). The slow part was bb rebuilding the page at 768px with the slide's chat in
+  it (3.5s in the Mac app with a long thread), so the page renders `.sb-chat-held` instead of
+  ThreadChat while the phase is growing or shrinking (`chatHeld`) and draws the chat after.
+  Meanwhile a DOM copy of the chat taken just before (`captureChatSnapshot`, with its scroll
+  offsets) sits over the slide (`.sb-chat-snapshot`, inert) until the live chat's text is at
+  least 60% of the copy's, or four seconds. After each slide-out, the first one per page load
+  also logs what's in the window's top-left corner (`title row: …`), to see the Mac app's title
+  row. bb's back and forward buttons outside the panel are hidden while out, and Switchboard's
+  header row gets 12px of left padding. An empty panel is reopened with bb's ⌘J shortcut, sent as a window-level keydown, but
+  only while bb's panel button label shows ⌘J. A file Switchboard adds widens first and opens
+  docked (`showPanelTab`), so the chat redraws once.
+- **Debugging:** localStorage `bb-plugin-switchboard:debug` = `1` logs each step to the console
+  and `window.__switchboardLog`; the page carries `data-panel` and `data-slide-phase`.
+
 ## Workflow lines
 
 Each running workflow of a listed thread shows as an indented line under it, before its
@@ -112,6 +196,10 @@ background commands get no lines.
 - `usageGauge` (boolean, default `true`): the session and week rings in the title bar.
 - `stayOnSwitchboard` (boolean, default `true`): a narrow window showing Switchboard goes
   straight back to it when something other than the user opens a thread there.
+- `slideOutPanel` (boolean, default `true`): the side panel slides out of a window under 768px
+  (the window widens) instead of covering it, and an agent's file comes over to it.
+- `threadLinksInSlide` (boolean, default `true`): thread links in the slide's chat open in the
+  slide, with ← stepping back.
 
 ## How panes cross windows
 
@@ -148,5 +236,10 @@ window.
   the 1.5s before (`shouldStayOnSwitchboard` in `src/panes.ts`); the page reopens the slide's
   chat if it comes back within 5s. Show goes to the thread. If the window stays on the thread
   instead, something counted as input; `stayOnSwitchboard` false turns this off.
+- The window didn't widen when the panel opened: only in bb's Mac app, only under 768px, and
+  only on the Switchboard page. Turn on the debug log (above) and open the panel again; a window
+  that couldn't resize at all is marked unsupported until the page reloads.
+- The window stayed wide: it only shrinks back if its width hasn't changed by hand since it
+  widened, and not after bb restarts. Drag it narrow by hand.
 - Ask the desk opens New chat instead: no active top-level thread in the `frontDesk` section
   (`bb thread list --section <id> --json`).

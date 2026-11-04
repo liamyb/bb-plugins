@@ -72,6 +72,11 @@ export const rpcContract = defineRpcContract({
     input: z.object({ threadId: z.string().min(1).max(100) }).strict(),
     output: z.object({ windowId: z.string().nullable() }),
   },
+  /** A line for the plugin log from a window: the slide-out's step timings. */
+  note: {
+    input: z.object({ windowId: windowIdSchema, message: z.string().min(1).max(600) }).strict(),
+    output: z.null(),
+  },
 });
 
 /** Resolves after `ms`, or as soon as `signal` aborts. */
@@ -164,6 +169,20 @@ export default function switchboard(bb: BbPluginApi): void {
         "bb sends a thread an agent opens (bb thread open, which is how agents put a file in the side panel) to every window. A window under 768px that's showing Switchboard goes straight back to it, with a bar naming the thread and a Show button, unless you clicked, pressed a key or focused that window just before.",
       default: true,
     },
+    slideOutPanel: {
+      type: "boolean",
+      label: "Slide the side panel out of a narrow window",
+      description:
+        "In a window under 768px, bb's side panel covers the whole window. With this on, the window widens to the right instead, so the panel sits beside Switchboard and the list keeps its width; closing the panel shrinks the window back, unless you've resized it by hand. A file an agent opens in a window that stayed on Switchboard comes over to this panel. Works in bb's Mac app; a web browser can't resize its window.",
+      default: true,
+    },
+    threadLinksInSlide: {
+      type: "boolean",
+      label: "Thread links open in the slide",
+      description:
+        "A link to another thread in a chat opened from Switchboard opens that thread in the same slide, and ← goes back to the chat you came from, then to the list. Cmd-click a link to open it the way bb does.",
+      default: true,
+    },
   });
 
   const kv = bb.storage.kv;
@@ -235,6 +254,10 @@ export default function switchboard(bb: BbPluginApi): void {
     },
     getPanes() {
       return serial(async () => summarize(await readReports(Date.now())));
+    },
+    note({ windowId, message }) {
+      bb.log.info(`${windowId}: ${message}`);
+      return null;
     },
     openInPane({ threadId }) {
       return serial(async () => {
