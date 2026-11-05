@@ -126,6 +126,7 @@ import {
 import {
   AGENT_FILE_WINDOW_MS,
   CHROME_CSS,
+  cardRowTitle,
   correctedWidth,
   fileName,
   firstGrowWidth,
@@ -134,6 +135,7 @@ import {
   newestFileSince,
   parseSlideOutRecord,
   recentItemsKey,
+  threadIdForTitle,
   threadIdFromHref,
   untouched,
   type RecentFile,
@@ -1687,6 +1689,41 @@ function panelBeside(): boolean {
   );
 }
 
+/** A row of bb's Threads card: the button that opens its thread (not "Show the whole message"). */
+const CARD_ROW_SELECTOR = 'section[aria-label="Threads"] li button[title^="Open “"]';
+
+interface ReactFiberish {
+  memoizedProps?: unknown;
+  return?: ReactFiberish | null;
+}
+
+/**
+ * The thread a Threads card row opens. bb draws the row as a button with no
+ * link, titled `Open “<thread title>”`, so the title picks it out when only
+ * one thread has it. Two threads with the same title fall back to the row's
+ * React props (a `thread` prop a level or two up), which aren't bb's API and
+ * may change; with neither, the click is left to bb.
+ */
+function cardRowThread(row: Element, threads: Iterable<{ id: string; displayTitle: string }>): string | null {
+  const title = cardRowTitle(row.getAttribute("title") ?? "");
+  if (title === null) return null;
+  const byTitle = threadIdForTitle(title, threads);
+  if (byTitle !== null) return byTitle;
+  try {
+    const key = Object.keys(row).find((name) => name.startsWith("__reactFiber$"));
+    let fiber = key === undefined ? null : ((row as unknown as Record<string, ReactFiberish>)[key] ?? null);
+    for (let depth = 0; depth < 4 && fiber !== null && fiber !== undefined; depth += 1) {
+      const props = fiber.memoizedProps as { thread?: { id?: unknown; title?: unknown } } | null | undefined;
+      const id = props?.thread?.id;
+      if (typeof id === "string" && /^thr_[a-z0-9]+$/.test(id)) return id;
+      fiber = fiber.return ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 /**
  * Switchboard's title in bb's header row (the row outside the side panel
  * that names it). The narrow and wide layouts put the header row in
@@ -2642,11 +2679,14 @@ function SwitchboardPage() {
     trail.length === 0 ? null : (byId.get(trail[trail.length - 1] ?? "")?.displayTitle ?? "the last chat");
 
   // Thread links in the slide's chat open in the slide rather than taking the
-  // window to the thread. Caught on the way down, before bb's own handler; a
-  // Cmd-, Ctrl-, Shift- or Alt-click is left to bb.
+  // window to the thread, and so do the rows of a Threads card (buttons, not
+  // links: see cardRowThread). Caught on the way down, before bb's own
+  // handler; a Cmd-, Ctrl-, Shift- or Alt-click is left to bb.
   const slideBodyRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(followLink);
   followRef.current = followLink;
+  const byIdRef = useRef(byId);
+  byIdRef.current = byId;
   useEffect(() => {
     const body = slideBodyRef.current;
     if (body === null || !settings.threadLinksInSlide) return;
@@ -2659,9 +2699,16 @@ function SwitchboardPage() {
       });
       if (event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (anchor === null || !body.contains(anchor)) return;
-      const id = threadIdFromHref(anchor.getAttribute("href") ?? "", window.location.origin);
+      const target = event.target instanceof Element ? event.target : null;
+      const anchor = target?.closest("a[href]") ?? null;
+      const row = anchor === null ? (target?.closest(CARD_ROW_SELECTOR) ?? null) : null;
+      let id: string | null = null;
+      if (anchor !== null && body.contains(anchor)) {
+        id = threadIdFromHref(anchor.getAttribute("href") ?? "", window.location.origin);
+      } else if (row !== null && body.contains(row)) {
+        id = cardRowThread(row, byIdRef.current.values());
+        debugLog("card row", { title: row.getAttribute("title"), id });
+      }
       if (id === null) return;
       event.preventDefault();
       event.stopPropagation();

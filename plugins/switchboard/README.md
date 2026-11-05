@@ -103,7 +103,8 @@ approvals and questions, with its own permission mode picker. Click another row 
 Escape, or the back control, slides it away.
 
 A link to another thread in that chat opens the linked thread in the slide too, rather than
-taking the window off Switchboard. ← then reads "Back to <the chat you came from>" and steps back
+taking the window off Switchboard, and so does a row of a Threads card (the live status card an
+agent puts in a reply, such as the front desk's when it routes something). ← then reads "Back to <the chat you came from>" and steps back
 one chat at a time, then to the list; Escape still goes straight to the list. Cmd-click a link
 to open it the way bb does. `threadLinksInSlide` turns this off.
 
@@ -262,7 +263,7 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `usageGauge` | `true` | The session and week usage rings in the title bar |
 | `stayOnSwitchboard` | `true` | A narrow window showing Switchboard goes straight back to it when something other than you opens a thread there, such as an agent's `bb thread open` |
 | `slideOutPanel` | `true` | In a window under 768px, the side panel slides out beside the list (the window widens) instead of covering it, and an agent's file comes over to it |
-| `threadLinksInSlide` | `true` | A link to another thread in the slide's chat opens that thread in the slide, with ← stepping back |
+| `threadLinksInSlide` | `true` | A link to another thread in the slide's chat, or a row of a Threads card in it, opens that thread in the slide, with ← stepping back |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.

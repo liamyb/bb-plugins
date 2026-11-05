@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   DOCKED_MIN_PX,
+  cardRowTitle,
   correctedWidth,
   fileName,
   firstGrowWidth,
@@ -10,6 +11,7 @@ import {
   newestFileSince,
   parseSlideOutRecord,
   recentItemsKey,
+  threadIdForTitle,
   threadIdFromHref,
   untouched,
 } from "./slideout.ts";
@@ -106,4 +108,23 @@ test("following links keeps a trail back", () => {
   // A link to the chat you're in, or with no chat open, adds nothing.
   assert.deepEqual(followTrail(["thr_a"], "thr_b", "thr_b"), ["thr_a"]);
   assert.deepEqual(followTrail([], null, "thr_b"), []);
+});
+
+test("a Threads card row names its thread in the button's title", () => {
+  assert.equal(cardRowTitle("Open “Front desk, 5 Nov”"), "Front desk, 5 Nov");
+  assert.equal(cardRowTitle("Open “A “quoted” title”"), "A “quoted” title");
+  assert.equal(cardRowTitle("Show the whole message"), null);
+  assert.equal(cardRowTitle("Open “”"), null);
+});
+
+test("a title picks out a thread only when one thread has it", () => {
+  const threads = [
+    { id: "thr_a1", displayTitle: "Front desk, 5 Nov" },
+    { id: "thr_b2", displayTitle: "Untitled" },
+    { id: "thr_c3", displayTitle: "Untitled" },
+  ];
+  assert.equal(threadIdForTitle("Front desk, 5 Nov", threads), "thr_a1");
+  assert.equal(threadIdForTitle(" Front desk, 5 Nov ", threads), "thr_a1");
+  assert.equal(threadIdForTitle("Untitled", threads), null);
+  assert.equal(threadIdForTitle("Something else", threads), null);
 });

@@ -85,6 +85,13 @@ click listener in `app.tsx`.
   came from goes on a trail (`followTrail`); ← steps back along it ("Back to <title>"), then
   closes the slide. Escape and opening a row clear the trail. Modifier clicks are left to bb.
   Setting `threadLinksInSlide`.
+- **Threads card rows:** bb's Threads card (`section[aria-label="Threads"]`, the `Threads()`
+  status card in agents' replies) draws each row as a `<button>` titled `Open “<thread title>”`,
+  with no link and no thread id in the DOM, so the same listener also catches that button
+  (`CARD_ROW_SELECTOR`). `cardRowTitle` reads the title and `threadIdForTitle` finds the one
+  thread with it; when two threads share a title, `cardRowThread` falls back to the row's React
+  props (a `thread` prop a level or two up, not bb's API), and with neither the click is left to
+  bb. The row's "Show the whole message" button isn't matched, so it still expands the preview.
 - **Slide-out:** when the page's panel opens (`experimental_usePanelTabs().open`) in bb's compact
   layout (under 768px), `growForPanel` adds `CHROME_CSS` (above 768px, while a `.sb-page` is on
   screen: hides `[data-sidebar=gap]`, `[data-sidebar=panel]`, the sidebar trigger overlay and any

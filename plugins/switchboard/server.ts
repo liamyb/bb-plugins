@@ -180,7 +180,7 @@ export default function switchboard(bb: BbPluginApi): void {
       type: "boolean",
       label: "Thread links open in the slide",
       description:
-        "A link to another thread in a chat opened from Switchboard opens that thread in the same slide, and ← goes back to the chat you came from, then to the list. Cmd-click a link to open it the way bb does.",
+        "A link to another thread in a chat opened from Switchboard, or a row of a Threads card in it, opens that thread in the same slide, and ← goes back to the chat you came from, then to the list. Cmd-click a link to open it the way bb does.",
       default: true,
     },
   });

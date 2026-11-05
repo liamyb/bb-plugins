@@ -223,6 +223,33 @@ export function threadIdFromHref(href: string, origin: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * The thread a row of bb's Threads card opens: the card (`section[aria-label=
+ * "Threads"]`, the `Threads()` status card agents put in replies) draws each
+ * row as a button titled `Open “<thread title>”`, with no link, so the title is
+ * the only thing in the page that names the thread. Null for anything else,
+ * such as the row's "Show the whole message" button.
+ */
+export function cardRowTitle(buttonTitle: string): string | null {
+  const match = /^Open “([\s\S]+)”$/.exec(buttonTitle.trim());
+  return match?.[1] ?? null;
+}
+
+/** The one thread with this title, or null when none or more than one has it. */
+export function threadIdForTitle(
+  title: string,
+  threads: Iterable<{ id: string; displayTitle: string }>,
+): string | null {
+  const wanted = title.trim();
+  let found: string | null = null;
+  for (const thread of threads) {
+    if (thread.displayTitle.trim() !== wanted) continue;
+    if (found !== null && found !== thread.id) return null;
+    found = thread.id;
+  }
+  return found;
+}
+
 /** The threads you followed links from, oldest first, after following one to `next`. */
 export function followTrail(trail: readonly string[], current: string | null, next: string): string[] {
   if (current === null || current === next) return [...trail];
