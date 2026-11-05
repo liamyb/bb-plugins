@@ -138,7 +138,7 @@ export default function switchboard(bb: BbPluginApi): void {
       type: "string",
       label: "Waiting: sections that pass on your asks",
       description:
-        "Section names or ids, comma-separated. A reply to a turn another thread started is FYI, unless that thread sits in one of these sections, which pass on what you asked (the front desk forwards your messages word for word). Empty: every turn another thread starts is FYI.",
+        "Section names or ids, comma-separated, whose threads pass on what you asked (the front desk forwards your messages word for word). A reply to a turn another thread started is FYI unless that thread was working for you: it sits in one of these sections, or the turn it sent from was yours, followed back up to three threads.",
       default: "Front desk",
     },
     askLedgerFolder: {

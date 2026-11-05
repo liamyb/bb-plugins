@@ -7,8 +7,11 @@ import {
   buildWaiting,
   findDesk,
   formatAgo,
+  chainCheck,
+  chainWanted,
   hasUnread,
   judge,
+  judgedOrigins,
   ledgerFileName,
   ledgerFolder,
   markSeen,
@@ -21,7 +24,9 @@ import {
   segmentTurns,
   stepPanes,
   tally,
+  turnAt,
   turnsWanted,
+  unreadTurns,
   unreadVerdict,
   type DeskFacts,
   type RelayCheck,
@@ -128,8 +133,9 @@ test("events cut into turns, and a cut-off oldest turn is dropped", () => {
   ]);
   const all = segmentTurns(events, true);
   assert.deepEqual(all, [
-    running(you),
-    done(90, fromThread("thr_a"), you),
+    { ...running(you), startedAt: 100 },
+    // A hand-off's request carries when it arrived; a turn, when its first request came.
+    { ...done(90, { ...fromThread("thr_a"), at: 80 }, you), startedAt: 70 },
     done(60),
   ]);
   // Read to the limit: the oldest turn may be missing its requests.
@@ -169,6 +175,111 @@ test("only turns that finished after the last read decide, else the newest one",
     from: fromThread("thr_hub"),
   });
   assert.deepEqual(unreadVerdict([running(you)], 100, noRelay), { kind: "unknown" });
+});
+
+test("a compact and a retry's \"Please continue.\" are maintenance, not yours", () => {
+  const maintenance = { kind: "maintenance" } as const;
+  // `bb thread tell --compact-first` sends the compact as the user's.
+  assert.deepEqual(
+    originOf({ initiator: "user", source: "tell", input: [{ type: "text", text: "/compact" }] }),
+    maintenance,
+  );
+  assert.deepEqual(
+    originOf({ initiator: "system", systemMessageSubject: null, input: [{ type: "text", text: "Please continue." }] }),
+    maintenance,
+  );
+  // A child's notice with those words is still the child's.
+  assert.deepEqual(
+    originOf({
+      initiator: "system",
+      systemMessageSubject: { kind: "thread", threadId: "thr_kid" },
+      input: [{ type: "text", text: "Please continue." }],
+    }),
+    { kind: "child", threadId: "thr_kid" },
+  );
+  assert.deepEqual(judge([maintenance], noRelay), { kind: "unknown" });
+  assert.deepEqual(judge([maintenance, fromThread("thr_hub")], noRelay), {
+    kind: "fyi",
+    from: fromThread("thr_hub"),
+  });
+  // A compact before a hand-off no longer makes it a reply.
+  const segments = [running(), done(300, fromThread("thr_hub")), done(200, maintenance), done(100, you)];
+  assert.deepEqual(unreadTurns(segments, 150), [segments[1]]);
+  assert.deepEqual(unreadVerdict(segments, 150, noRelay), { kind: "fyi", from: fromThread("thr_hub") });
+  // A retry's output, unread on its own, is judged by the turn it continued.
+  const retried = [running(), done(300, maintenance), done(200, you)];
+  assert.deepEqual(unreadVerdict(retried, 250, noRelay), { kind: "reply" });
+});
+
+test("the turn a hand-off came from is the sender's newest turn started by then", () => {
+  const compact = { kind: "maintenance" } as const;
+  const segments: TurnSegment[] = [
+    { ...running(you), startedAt: 500 },
+    { ...done(450, compact), startedAt: 400 },
+    { ...done(390, fromThread("thr_desk")), startedAt: 300 },
+    { ...done(250, you), startedAt: 200 },
+  ];
+  // Sent at 320 but queued behind a compact: still the turn that started at 300.
+  assert.equal(turnAt(segments, 420), segments[2]);
+  assert.equal(turnAt(segments, 320), segments[2]);
+  assert.equal(turnAt(segments, 260), segments[3]);
+  assert.equal(turnAt(segments, 520), segments[0]);
+  assert.equal(turnAt(segments, 100), null);
+});
+
+test("a hand-off is yours when the thread that sent it was working for you", () => {
+  // You → desk (relay) → a thread the desk started → a thread it handed work to.
+  const desk = (id: string) => (id === "thr_desk" ? true : id === "thr_gone" ? null : false);
+  const turns: Record<string, TurnSegment[]> = {
+    // Spawned by the desk: bb records its first turn as yours.
+    thr_spawned: [running(), { ...done(200, you), startedAt: 100 }],
+    // Asked by the desk, which counts too.
+    thr_routed: [running(), { ...done(200, { ...fromThread("thr_desk"), at: 90 }), startedAt: 90 }],
+    // A hub writing up an automation's run: not for you.
+    thr_hub: [running(), { ...done(200, { kind: "automation" }), startedAt: 100 }],
+    // Handed on by the desk's thread, three threads from you.
+    thr_second: [running(), { ...done(300, { ...fromThread("thr_spawned"), at: 150 }), startedAt: 160 }],
+    thr_third: [running(), { ...done(400, { ...fromThread("thr_second"), at: 250 }), startedAt: 260 }],
+    thr_fourth: [running(), { ...done(500, { ...fromThread("thr_third"), at: 350 }), startedAt: 360 }],
+    thr_loop: [running(), { ...done(200, { ...fromThread("thr_loop"), at: 120 }), startedAt: 110 }],
+  };
+  const check = chainCheck(desk, (id) => turns[id]);
+  assert.equal(check("thr_desk"), true);
+  assert.equal(check("thr_spawned", 150), true);
+  assert.equal(check("thr_routed", 150), true);
+  assert.equal(check("thr_hub", 150), false);
+  // Up to three threads back, and no further.
+  assert.equal(check("thr_second", 250), true);
+  assert.equal(check("thr_third", 350), true);
+  assert.equal(check("thr_fourth", 450), false);
+  // Not read yet, gone, or sent before its turns reach back: unknown.
+  assert.equal(check("thr_unread", 150), null);
+  assert.equal(check("thr_gone", 150), null);
+  assert.equal(check("thr_spawned", 50), null);
+  // No time to match it on (an old test fixture): its section decides.
+  assert.equal(check("thr_spawned"), false);
+  assert.equal(check("thr_loop", 150), false);
+  // In a row: an unread hand-off from the desk's thread is a reply.
+  assert.deepEqual(unreadVerdict([running(), done(300, { ...fromThread("thr_spawned"), at: 150 })], 200, check), {
+    kind: "reply",
+  });
+});
+
+test("the chain asks for each sender's turns, then the next sender's", () => {
+  const desk = (id: string) => id === "thr_desk";
+  const handOff = { ...fromThread("thr_spawned"), at: 150 };
+  assert.deepEqual([...chainWanted([handOff, you], desk, () => undefined)], [["thr_spawned", 150]]);
+  // Once read, its own sender is next, at the time it reached the desk's thread.
+  const turns: Record<string, TurnSegment[]> = {
+    thr_spawned: [running(), { ...done(200, { ...fromThread("thr_hub"), at: 120 }), startedAt: 120 }],
+  };
+  assert.deepEqual([...chainWanted([handOff], desk, (id) => turns[id])], [["thr_hub", 120]]);
+  // The desk itself needs nothing read.
+  assert.deepEqual([...chainWanted([{ ...fromThread("thr_desk"), at: 10 }], desk, () => undefined)], []);
+  // What a row is judged on: the running turn while busy, else what's unread.
+  const segments = [running(handOff), done(300, you), done(100, fromThread("thr_hub"))];
+  assert.deepEqual(judgedOrigins(thread("a", { status: "active" }), segments), [handOff]);
+  assert.deepEqual(judgedOrigins(thread("a", { lastReadAt: 200 }), segments), [you]);
 });
 
 test("relay sections match by name or id, and an unknown sender stays unknown", () => {

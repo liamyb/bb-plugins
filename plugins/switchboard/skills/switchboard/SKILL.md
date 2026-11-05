@@ -47,11 +47,22 @@ thread:
 - **Reply or FYI** is decided from `threads.events.list` (types `client/turn/requested` and
   `turn/completed`, newest first, 24 events), cut into turns. The turns that completed after
   `lastReadAt` (or, with none, the newest completed turn) are checked: any request with
-  `initiator: "user"`, `initiator: "system"` (a child's completed notice) or from a thread in a
-  `relaySections` section makes it a Reply. Only other threads (`initiator: "agent"`,
-  `senderThreadId`) or automations (input starting `[bb automation`) make it FYI. A sender that
-  isn't an active thread is looked up with `threads.get` for its section; until then the row
-  counts as a Reply.
+  `initiator: "user"`, `initiator: "system"` (a child's completed notice) or from a thread
+  working for the user makes it a Reply. Only automations (input starting `[bb automation`) and
+  threads not working for the user make it FYI. A sender that isn't an active thread is looked
+  up with `threads.get` for its section; until then the row counts as a Reply.
+- **Working for the user (`chainCheck`):** the sender is in a `relaySections` section, or the
+  sender's turn that sent the hand-off was the user's by the same rule, followed back up to
+  `CHAIN_DEPTH` (3) threads. The sender's turn is its newest turn that started by the time the
+  request reached the recipient (`turnAt`, matched on start because a message can wait behind a
+  compact or a busy recipient). Senders' turns are read into `chainStore` (`chainWanted` says
+  which, and how recent a read each needs). A thread the desk spawns has its first turn recorded
+  as `initiator: "user"`, which is what makes its hand-offs count. Until a sender's turns are
+  read, or when they don't reach back that far, the row counts as a Reply.
+- **Maintenance turns** don't count either way: input `/compact` (also how
+  `bb thread tell --compact-first` arrives, as the user's) and `initiator: "system"` with no
+  `systemMessageSubject` and input "Please continue." (bb's retry after a usage limit). A
+  retry's output, unread on its own, is judged by the turn before it.
 
 Today's asks: headed by today's front desk thread (below) with its status, then
 `<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read` every 60 seconds
@@ -228,7 +239,8 @@ window.
 - A thread isn't listed: check it's open in a pane of a bb window whose overlay is running
   (`bb plugin list` shows switchboard running), or pick All.
 - A thread is in FYI but should be a Reply: its unread turns all came from another thread
-  outside `relaySections`. Check with
+  outside `relaySections` whose sending turn wasn't the user's either, three threads back. Check
+  each with
   `curl "http://127.0.0.1:38886/api/v1/threads/<id>/events?types=client/turn/requested,turn/completed&order=desc&limit=24"`.
 - The pane summary, finished threads included:
   `curl -X POST -H 'content-type: application/json' -d null http://127.0.0.1:38886/api/v1/plugins/switchboard/rpc/getPanes`.

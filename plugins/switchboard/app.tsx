@@ -88,9 +88,12 @@ import {
   askStatus,
   badgeFor,
   buildWaiting,
+  chainCheck,
+  chainWanted,
   findDesk,
   formatAgo,
   hasUnread,
+  judgedOrigins,
   ledgerFileName,
   ledgerFolder,
   markSeen,
@@ -336,6 +339,49 @@ const turnStore = (() => {
   };
 })();
 
+/**
+ * The turns of threads that handed work on, read to follow the chain back
+ * (src/waiting.ts `chainCheck`). Kept apart from `turnStore`, which keys a
+ * thread by its attention, so a thread that's both listed and a sender isn't
+ * read over and over. A sender is read again only when a hand-off reached
+ * its recipient after the last read, since the turn it was sent from may be
+ * newer than that.
+ */
+const chainStore = (() => {
+  const entries = new Map<string, { readAt: number; segments: TurnSegment[] }>();
+  const loading = new Set<string>();
+  const listeners = new Set<Listener>();
+  let snapshot: ReadonlyMap<string, readonly TurnSegment[]> = new Map();
+  return {
+    subscribe(listener: Listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    get: () => snapshot,
+    ensure(sdk: Sdk, threadId: string, neededAt: number) {
+      const entry = entries.get(threadId);
+      if (loading.has(threadId) || (entry !== undefined && entry.readAt >= neededAt)) return;
+      loading.add(threadId);
+      const readAt = Date.now();
+      sdk.threads.events
+        .list({ threadId, types: TURN_EVENT_TYPES, order: "desc", limit: String(TURN_EVENT_LIMIT) })
+        .then((rows) => {
+          const exhausted = Array.isArray(rows) && rows.length < TURN_EVENT_LIMIT;
+          entries.set(threadId, { readAt, segments: segmentTurns(parseTurnEvents(rows), exhausted) });
+        })
+        // Unreadable (gone, say): nothing to follow, and not asked again.
+        .catch(() => entries.set(threadId, { readAt: Number.MAX_SAFE_INTEGER, segments: [] }))
+        .finally(() => {
+          loading.delete(threadId);
+          snapshot = new Map([...entries].map(([id, value]) => [id, value.segments]));
+          for (const listener of listeners) listener();
+        });
+    },
+  };
+})();
+
 interface SenderInfo {
   title: string;
   sectionId: string | null;
@@ -495,26 +541,29 @@ function useWaiting(
     }
   }, [sdk, wantedKey]);
   const turns = useSyncExternalStore(turnStore.subscribe, turnStore.get);
+  const chainTurns = useSyncExternalStore(chainStore.subscribe, chainStore.get);
 
   // Senders that aren't active threads: their section decides a relay.
   const unknownSenders = useMemo(() => {
     const ids = new Set<string>();
-    for (const segments of turns.values()) {
-      for (const segment of segments) {
-        for (const origin of segment.origins) {
-          if (origin.kind === "thread" && !byId.has(origin.threadId)) ids.add(origin.threadId);
+    for (const map of [turns, chainTurns]) {
+      for (const segments of map.values()) {
+        for (const segment of segments) {
+          for (const origin of segment.origins) {
+            if (origin.kind === "thread" && !byId.has(origin.threadId)) ids.add(origin.threadId);
+          }
         }
       }
     }
     return [...ids].sort().join(",");
-  }, [turns, byId]);
+  }, [turns, chainTurns, byId]);
   useEffect(() => {
     if (unknownSenders.length === 0) return;
     for (const id of unknownSenders.split(",")) senderStore.ensure(sdk, id);
   }, [sdk, unknownSenders]);
   const senders = useSyncExternalStore(senderStore.subscribe, senderStore.get);
 
-  const isRelay = useMemo(
+  const inRelaySection = useMemo(
     () =>
       relayCheck(relaySections, sections, (id) => {
         const active = byId.get(id);
@@ -523,6 +572,30 @@ function useWaiting(
         return sender === undefined ? undefined : (sender?.sectionId ?? null);
       }),
     [relaySections, sections, byId, senders],
+  );
+
+  // Follow hand-offs back: read the turns of each thread that handed work to
+  // a listed one, and of the threads that handed work to those.
+  const chainKey = useMemo(() => {
+    const listed = new Set((JSON.parse(wantedKey) as { id: string }[]).map((entry) => entry.id));
+    const turnsOf = (id: string) => chainTurns.get(id);
+    const wanted = new Map<string, number>();
+    for (const thread of threads) {
+      const segments = turns.get(thread.id);
+      if (!listed.has(thread.id) || segments === undefined) continue;
+      for (const [id, at] of chainWanted(judgedOrigins(thread, segments), inRelaySection, turnsOf)) {
+        wanted.set(id, Math.max(wanted.get(id) ?? 0, at));
+      }
+    }
+    return JSON.stringify([...wanted].sort(([a], [b]) => a.localeCompare(b)));
+  }, [wantedKey, threads, turns, chainTurns, inRelaySection]);
+  useEffect(() => {
+    for (const [id, at] of JSON.parse(chainKey) as [string, number][]) chainStore.ensure(sdk, id, at);
+  }, [sdk, chainKey]);
+
+  const isRelay = useMemo(
+    () => chainCheck(inRelaySection, (id) => chainTurns.get(id)),
+    [inRelaySection, chainTurns],
   );
 
   const rows = useMemo(

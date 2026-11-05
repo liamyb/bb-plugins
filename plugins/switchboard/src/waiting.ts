@@ -10,11 +10,17 @@
  *   it's waiting for an answer, since its parent relays everything else.
  * - Replies: a top-level thread with a finished turn you haven't read, where
  *   at least one of those turns was yours: you sent it, a child reported back
- *   (the thread passes that on to you), or a thread in a relay section (the
- *   front desk) passed on something you asked.
- * - FYI: the same, but every one of those turns came from another thread or
- *   an automation, like a "noted" reply to a hand-off. Shown, never hidden: a
- *   hand-off can still turn up something you need.
+ *   (the thread passes that on to you), or another thread handed it on while
+ *   working for you. A thread is working for you when it's in a relay section
+ *   (the front desk), or when the turn it sent the hand-off from was itself
+ *   yours, followed back up to three threads (the desk spawns a thread for
+ *   your ask, and that thread hands part of it to another).
+ * - FYI: the same, but every one of those turns came from an automation, or
+ *   from a thread that wasn't working for you, like a hub's routine note.
+ *   Shown, never hidden: a hand-off can still turn up something you need.
+ *
+ * A `/compact`, and the "Please continue." bb sends when it retries after a
+ * usage limit, have nothing to read in them, so they don't count either way.
  * - Working: a top-level thread that's busy.
  *
  * "Haven't read" is bb's unread state, plus a thread open in a pane that
@@ -52,8 +58,11 @@ export interface WaitingFacts extends ThreadFacts {
 export type TurnOrigin =
   | { kind: "you" }
   | { kind: "child"; threadId: string | null }
-  | { kind: "thread"; threadId: string }
-  | { kind: "automation" };
+  /** `at`: when the request reached this thread, to find the sender's turn that sent it. */
+  | { kind: "thread"; threadId: string; at?: number }
+  | { kind: "automation" }
+  /** A `/compact`, or the "Please continue." of a retry after a usage limit. */
+  | { kind: "maintenance" };
 
 /** A turn request or a turn ending, from the thread's event log. */
 export type TurnEvent =
@@ -68,6 +77,10 @@ export const TURN_EVENT_LIMIT = 24;
 
 // An automation's prompt starts with this envelope, whoever bb says sent it.
 const AUTOMATION_PREFIX = /^\s*\[bb automation\b/;
+// A compact, typed or sent ahead of a message (`bb thread tell --compact-first`).
+const COMPACT = /^\s*\/compact\s*$/;
+// What bb sends, as a system message with no subject, when it retries a turn.
+const CONTINUE = /^\s*Please continue\.?\s*$/i;
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
@@ -93,12 +106,15 @@ export function originOf(data: unknown): TurnOrigin {
   const fields = record(data) ?? {};
   const text = firstText(fields.input);
   if (text !== null && AUTOMATION_PREFIX.test(text)) return { kind: "automation" };
+  if (text !== null && COMPACT.test(text)) return { kind: "maintenance" };
   if (fields.initiator === "agent" && typeof fields.senderThreadId === "string") {
     return { kind: "thread", threadId: fields.senderThreadId };
   }
   if (fields.initiator === "system") {
     const subject = record(fields.systemMessageSubject);
-    return { kind: "child", threadId: typeof subject?.threadId === "string" ? subject.threadId : null };
+    const threadId = typeof subject?.threadId === "string" ? subject.threadId : null;
+    if (threadId === null && text !== null && CONTINUE.test(text)) return { kind: "maintenance" };
+    return { kind: "child", threadId };
   }
   return { kind: "you" };
 }
@@ -117,7 +133,13 @@ export function parseTurnEvents(rows: unknown): TurnEvent[] {
     if (type === "turn/completed") {
       events.push({ kind: "completed", seq: at, createdAt });
     } else if (type === "client/turn/requested") {
-      events.push({ kind: "requested", seq: at, createdAt, origin: originOf(row.data) });
+      const origin = originOf(row.data);
+      events.push({
+        kind: "requested",
+        seq: at,
+        createdAt,
+        origin: origin.kind === "thread" ? { ...origin, at: createdAt } : origin,
+      });
     }
   }
   return events.sort((a, b) => b.seq - a.seq);
@@ -130,6 +152,8 @@ export function parseTurnEvents(rows: unknown): TurnEvent[] {
 export interface TurnSegment {
   completedAt: number | null;
   origins: TurnOrigin[];
+  /** When its first request came in, where known. */
+  startedAt?: number;
 }
 
 /**
@@ -140,15 +164,29 @@ export interface TurnSegment {
 export function segmentTurns(events: readonly TurnEvent[], exhausted: boolean): TurnSegment[] {
   const segments: TurnSegment[] = [{ completedAt: null, origins: [] }];
   for (const event of events) {
-    if (event.kind === "completed") segments.push({ completedAt: event.createdAt, origins: [] });
-    else segments[segments.length - 1]!.origins.push(event.origin);
+    if (event.kind === "completed") {
+      segments.push({ completedAt: event.createdAt, origins: [] });
+    } else {
+      const segment = segments[segments.length - 1]!;
+      segment.origins.push(event.origin);
+      // Newest first, so the last request seen is the turn's first.
+      segment.startedAt = event.createdAt;
+    }
   }
   if (!exhausted && segments.length > 1) segments.pop();
   return segments;
 }
 
-/** Whether a turn another thread started counts as yours: true, false, or null while unknown. */
-export type RelayCheck = (threadId: string) => boolean | null;
+/** A turn that's only a `/compact` or a retry's "Please continue.". */
+export function isMaintenance(segment: TurnSegment): boolean {
+  return segment.origins.length > 0 && segment.origins.every((origin) => origin.kind === "maintenance");
+}
+
+/**
+ * Whether a turn another thread started counts as yours: true, false, or
+ * null while unknown. `at` is when its request reached the thread.
+ */
+export type RelayCheck = (threadId: string, at?: number) => boolean | null;
 
 export type Verdict =
   | { kind: "reply" }
@@ -158,43 +196,135 @@ export type Verdict =
 
 /**
  * Yours if any of the turns was: you sent it, a child reported back, or a
- * relay thread passed on your ask. Otherwise FYI, from whoever started the
- * newest one.
+ * thread working for you handed it on. Otherwise FYI, from whoever started
+ * the newest one. Maintenance turns don't count either way.
  */
 export function judge(origins: readonly TurnOrigin[], isRelay: RelayCheck): Verdict {
-  if (origins.length === 0) return { kind: "unknown" };
+  const counted = origins.filter((origin) => origin.kind !== "maintenance");
+  if (counted.length === 0) return { kind: "unknown" };
   let unknown = false;
-  for (const origin of origins) {
+  for (const origin of counted) {
     if (origin.kind === "you" || origin.kind === "child") return { kind: "reply" };
     if (origin.kind === "thread") {
-      const relay = isRelay(origin.threadId);
+      const relay = isRelay(origin.threadId, origin.at);
       if (relay === true) return { kind: "reply" };
       if (relay === null) unknown = true;
     }
   }
   if (unknown) return { kind: "unknown" };
-  return { kind: "fyi", from: origins[0]! };
+  return { kind: "fyi", from: counted[0]! };
 }
 
 /**
- * The verdict on what you haven't read: the turns that finished after you
- * last read the thread. With none (bb marked a thread in a pane read as it
- * finished), the newest finished turn.
+ * The turns that decide what you haven't read: the ones that finished after
+ * you last read the thread. With none (bb marked a thread in a pane read as
+ * it finished), the newest finished turn. Maintenance turns are skipped, so a
+ * retry's output is judged by the turn it continued.
  */
+export function unreadTurns(segments: readonly TurnSegment[], lastReadAt: number | null): TurnSegment[] {
+  const finished = segments.filter((segment) => segment.completedAt !== null && !isMaintenance(segment));
+  const unread = finished.filter(
+    (segment) => lastReadAt === null || segment.completedAt! > lastReadAt,
+  );
+  return unread.length > 0 ? unread : finished.slice(0, 1);
+}
+
+/** The verdict on what you haven't read. */
 export function unreadVerdict(
   segments: readonly TurnSegment[],
   lastReadAt: number | null,
   isRelay: RelayCheck,
 ): Verdict {
-  const finished = segments.filter((segment) => segment.completedAt !== null);
-  const unread = finished.filter(
-    (segment) => lastReadAt === null || segment.completedAt! > lastReadAt,
-  );
-  const turns = unread.length > 0 ? unread : finished.slice(0, 1);
   return judge(
-    turns.flatMap((segment) => segment.origins),
+    unreadTurns(segments, lastReadAt).flatMap((segment) => segment.origins),
     isRelay,
   );
+}
+
+/** How many threads back a hand-off is followed to find out whether it was for you. */
+export const CHAIN_DEPTH = 3;
+
+/**
+ * The turn a thread was in when it sent something that reached another
+ * thread at `at`: its newest turn that started by then. A message can wait
+ * (a compact first, or a busy recipient), so it's matched on when the
+ * sender's turn started, not when it ended. A compact or retry that started
+ * meanwhile is passed over. Null when its turns don't reach back that far.
+ */
+export function turnAt(segments: readonly TurnSegment[], at: number): TurnSegment | null {
+  let best: TurnSegment | null = null;
+  for (const segment of segments) {
+    if (segment.startedAt === undefined || segment.startedAt > at || isMaintenance(segment)) continue;
+    if (best === null || segment.startedAt > best.startedAt!) best = segment;
+  }
+  return best;
+}
+
+/** A thread's turns, newest first, or undefined while they haven't been read. */
+export type TurnsOf = (threadId: string) => readonly TurnSegment[] | undefined;
+
+/**
+ * A relay check that follows the chain: a sender counts as working for you
+ * when it's in a relay section (`section`), or when the turn it sent from was
+ * yours by the same rule, up to `depth` threads back. Null while a sender's
+ * section or turns are still being read, or when its turns don't reach back.
+ */
+export function chainCheck(
+  section: (threadId: string) => boolean | null,
+  turnsOf: TurnsOf,
+  depth: number = CHAIN_DEPTH,
+): RelayCheck {
+  const check = (threadId: string, at: number | undefined, level: number, visited: ReadonlySet<string>) => {
+    const relay = section(threadId);
+    if (relay === true) return true;
+    if (at === undefined || level >= depth || visited.has(threadId)) return relay;
+    const segments = turnsOf(threadId);
+    if (segments === undefined) return null;
+    const turn = turnAt(segments, at);
+    if (turn === null) return null;
+    const next = new Set(visited).add(threadId);
+    const verdict = judge(turn.origins, (sender, sentAt) => check(sender, sentAt, level + 1, next));
+    if (verdict.kind === "reply") return true;
+    // Unknown: a sender further back is still being read.
+    if (verdict.kind === "unknown") return null;
+    return relay;
+  };
+  return (threadId, at) => check(threadId, at, 0, new Set());
+}
+
+/**
+ * The senders whose turns the chain still needs, each with the latest time
+ * its turns must reach: the threads in `origins`, and theirs in turn, as far
+ * as `chainCheck` would follow them.
+ */
+export function chainWanted(
+  origins: readonly TurnOrigin[],
+  section: (threadId: string) => boolean | null,
+  turnsOf: TurnsOf,
+  depth: number = CHAIN_DEPTH,
+): Map<string, number> {
+  const wanted = new Map<string, number>();
+  const walk = (list: readonly TurnOrigin[], level: number, visited: ReadonlySet<string>) => {
+    for (const origin of list) {
+      if (origin.kind !== "thread" || origin.at === undefined) continue;
+      if (section(origin.threadId) === true || level >= depth || visited.has(origin.threadId)) continue;
+      const segments = turnsOf(origin.threadId);
+      if (segments === undefined) {
+        wanted.set(origin.threadId, Math.max(wanted.get(origin.threadId) ?? 0, origin.at));
+        continue;
+      }
+      const turn = turnAt(segments, origin.at);
+      if (turn !== null) walk(turn.origins, level + 1, new Set(visited).add(origin.threadId));
+    }
+  };
+  walk(origins, 0, new Set());
+  return wanted;
+}
+
+/** The origins a thread's row is judged on: the running turn's while it's busy, else what's unread. */
+export function judgedOrigins(thread: WaitingFacts, segments: readonly TurnSegment[]): TurnOrigin[] {
+  if (isBusy(thread)) return segments[0]?.origins ?? [];
+  return unreadTurns(segments, thread.lastReadAt).flatMap((segment) => segment.origins);
 }
 
 /** The verdict on the turn running now. */

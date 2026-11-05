@@ -58,12 +58,18 @@ thread that needs a look, from bb's own state, with no agent turns:
   failed turn. A child thread shows here, under its parent's name, while it's waiting for an
   answer. Children show nowhere else, since their parent passes on what they find.
 - **Replies:** a thread with a finished turn you haven't read, where at least one of those
-  turns was yours: you sent the message, a child reported back, or a thread in one of the
-  `relaySections` passed on something you asked (the front desk forwards your messages word for
-  word, so its hand-offs count as yours).
-- **FYI:** the same, but every one of those turns came from another thread or an automation,
-  like a "noted" reply to a hand-off. The second line says who sent it. FYI is never hidden,
-  because a hand-off can still turn up something you need.
+  turns was yours: you sent the message, a child reported back, or another thread handed it on
+  while working for you. A thread is working for you when it's in one of the `relaySections`
+  (the front desk forwards your messages word for word), or when the turn it sent the hand-off
+  from was itself yours by the same rule. That's followed back up to three threads, so when the
+  desk starts a thread for your ask and that thread hands part of it to another, the other
+  thread's answer is a Reply too.
+- **FYI:** the same, but every one of those turns came from an automation, or from a thread
+  that wasn't working for you, like a hub's note on an automation's run. The second line says
+  who sent it. FYI is never hidden, because a hand-off can still turn up something you need.
+
+A `/compact` (including the one `bb thread tell --compact-first` sends ahead of a message) and
+the "Please continue." bb sends when it retries after a usage limit don't count either way.
 - **Working:** a thread that's busy, with its workflow lines under it. The second line says
   who it's working for when that's another thread.
 
@@ -257,7 +263,7 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `newChatEnvironmentId` | `env_82jgfihfwx` | The environment the New chat composer starts on, normally your project checkout (`bb environment list --project <id>`). Empty for the composer's own choice |
 | `paneReportTtlSeconds` | `120` | How long a window's pane report counts after its last heartbeat (10 to 600) |
 | `frontDesk` | `Front desk` | The section (name or id) whose pinned thread Ask the desk opens and Today's asks starts with. Empty: a plain New chat button and no desk line |
-| `relaySections` | `Front desk` | Section names or ids, comma-separated, whose threads pass on your asks: a reply to a turn one of them started counts as a reply, not FYI. Empty: every turn another thread starts is FYI |
+| `relaySections` | `Front desk` | Section names or ids, comma-separated, whose threads pass on your asks: a reply to a turn one of them started counts as a reply, not FYI, and so does one from a thread whose sending turn was yours, up to three threads back |
 | `askLedgerFolder` | `automation/front-desk/ledger` | Where the front desk's daily ledger lives (`<YYYY-MM-DD>.jsonl`). A relative path is read from the `newChatEnvironmentId` checkout. Empty: no Today's asks |
 | `railBadge` | `true` | The count of threads asking you or with a reply on the rail icon |
 | `usageGauge` | `true` | The session and week usage rings in the title bar |
