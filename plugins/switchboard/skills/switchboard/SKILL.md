@@ -96,6 +96,16 @@ click listener in `app.tsx`.
   came from goes on a trail (`followTrail`); ← steps back along it ("Back to <title>"), then
   closes the slide. Escape and opening a row clear the trail. Modifier clicks are left to bb.
   Setting `threadLinksInSlide`.
+- **Workspace file links:** bb's plugin ThreadChat (`PluginThreadChat` in bb's web bundle) only
+  passes the timeline an `onOpenLocalFileLink` when it's rendered inside a thread view's
+  navigation context, for a chat on the same environment, and the SDK's `ThreadChat` takes no
+  file-opener prop. So on Switchboard's page bb's markdown link (`linkRouting.localFile`) had no
+  opener and the browser followed the raw href against `/plugins/switchboard/...` ("This plugin
+  panel is not available"). The same capture listener now catches a plain left click on a link
+  that `workspaceFileFromHref` places in the chat thread's workspace (relative, absolute under
+  `environment.path`, or `file://` under it) and opens it with `experimental_openFilePreview`
+  (`openLinkedFile`), selecting the tab in the compact layout so the panel slides out. Not behind
+  `threadLinksInSlide`. Thread-storage paths aren't handled and are left to bb.
 - **Threads card rows:** bb's Threads card (`section[aria-label="Threads"]`, the `Threads()`
   status card in agents' replies) draws each row as a `<button>` titled `Open “<thread title>”`,
   with no link and no thread id in the DOM, so the same listener also catches that button

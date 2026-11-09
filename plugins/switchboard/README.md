@@ -114,6 +114,12 @@ agent puts in a reply, such as the front desk's when it routes something). ← t
 one chat at a time, then to the list; Escape still goes straight to the list. Cmd-click a link
 to open it the way bb does. `threadLinksInSlide` turns this off.
 
+A link to a file in the chat's workspace opens the file in the side panel, as it does in a
+thread's own view. The link can be relative (`current-projects/notes.md`), an absolute path
+inside the workspace, or a `file://` URL. bb's chat only gets a file opener when it sits inside
+a thread view, so without this a relative link resolved against Switchboard's own address and
+showed "This plugin panel is not available".
+
 - **Narrow page** (a 500px window): the chat slides over the whole list, with a back control
   in its header.
 - **Wide page** (about 700px or more): the list keeps a 352px column on the left and the chat

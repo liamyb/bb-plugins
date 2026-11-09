@@ -250,6 +250,56 @@ export function threadIdForTitle(
   return found;
 }
 
+/**
+ * The workspace file a link in the slide's chat points at, as a path relative
+ * to the workspace root, or null for anything else. bb's chat opens these
+ * itself in a thread's own view, but the plugin ThreadChat only gets a file
+ * opener when it sits inside a thread view, so on Switchboard's page a
+ * relative link fell through to the browser and resolved against the page's
+ * URL. Takes a relative path (`current-projects/notes.md`), an absolute one
+ * under the root, or a `file://` URL under the root; query and fragment are
+ * dropped. Null for other URLs, in-page anchors, paths outside the root, and
+ * folders.
+ */
+export function workspaceFileFromHref(href: string, rootPath: string | null): string | null {
+  const raw = href.trim();
+  if (raw.length === 0 || raw.startsWith("#") || raw.startsWith("//")) return null;
+  let path: string;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+    if (!/^file:/i.test(raw)) return null;
+    try {
+      path = decodeURIComponent(new URL(raw).pathname);
+    } catch {
+      return null;
+    }
+  } else {
+    const bare = raw.split(/[?#]/)[0] ?? "";
+    try {
+      path = decodeURIComponent(bare);
+    } catch {
+      path = bare;
+    }
+  }
+  if (path.length === 0 || path.endsWith("/")) return null;
+  let relative = path;
+  if (path.startsWith("/")) {
+    const root = (rootPath ?? "").replace(/\/+$/, "");
+    if (root.length === 0 || !path.startsWith(`${root}/`)) return null;
+    relative = path.slice(root.length + 1);
+  }
+  const parts: string[] = [];
+  for (const part of relative.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return parts.length === 0 ? null : parts.join("/");
+}
+
 /** The threads you followed links from, oldest first, after following one to `next`. */
 export function followTrail(trail: readonly string[], current: string | null, next: string): string[] {
   if (current === null || current === next) return [...trail];

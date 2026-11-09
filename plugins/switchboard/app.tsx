@@ -141,6 +141,7 @@ import {
   threadIdForTitle,
   threadIdFromHref,
   untouched,
+  workspaceFileFromHref,
   type RecentFile,
   type SlideOutRecord,
 } from "./src/slideout";
@@ -1798,6 +1799,40 @@ function cardRowThread(row: Element, threads: Iterable<{ id: string; displayTitl
 }
 
 /**
+ * A workspace file linked from the chat in the slide, opened in the side
+ * panel as bb opens it in a thread's own view (in a narrow window, the panel
+ * then slides out). False when the link isn't a file in that chat's
+ * workspace, or bb wouldn't open it, so the click is left to bb.
+ */
+function openLinkedFile(
+  href: string,
+  threadId: string | null,
+  threads: ReadonlyMap<string, PluginSidebarThread>,
+): boolean {
+  if (threadId === null) return false;
+  const environment = threads.get(threadId)?.environment ?? null;
+  const navigate = slideLive.navigate;
+  if (environment === null || environment.id === null || navigate === null) return false;
+  const path = workspaceFileFromHref(href, environment.path);
+  if (path === null) return false;
+  const opened = navigate.experimental_openFilePreview({
+    target: { kind: "workspace", environmentId: environment.id, path },
+    location: null,
+  });
+  debugLog("file link", { href, path, opened });
+  if (!opened) return false;
+  // In the compact layout bb adds the tab without showing the panel: select it.
+  const tabFor = () =>
+    fileTabsOf(slideLive.tabs).find((tab) => tab.path === path || tab.path.endsWith(`/${path}`));
+  void waitFor(() => tabFor() !== undefined || panelOpenNow(), 1500).then(() => {
+    const tab = tabFor();
+    if (tab === undefined || panelOpenNow()) return;
+    showPanelTab(tab.key);
+  });
+  return true;
+}
+
+/**
  * Switchboard's title in bb's header row (the row outside the side panel
  * that names it). The narrow and wide layouts put the header row in
  * different places (in the Mac app the wide one sits below the window's
@@ -2755,14 +2790,23 @@ function SwitchboardPage() {
   // window to the thread, and so do the rows of a Threads card (buttons, not
   // links: see cardRowThread). Caught on the way down, before bb's own
   // handler; a Cmd-, Ctrl-, Shift- or Alt-click is left to bb.
+  //
+  // Links to workspace files open in the side panel, as they do in a thread's
+  // own view: bb's plugin ThreadChat only gets a file opener inside a thread
+  // view, so here the browser followed the link against the page's URL (see
+  // workspaceFileFromHref). That isn't behind the setting, as it's a fix.
   const slideBodyRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(followLink);
   followRef.current = followLink;
   const byIdRef = useRef(byId);
   byIdRef.current = byId;
+  const threadLinksRef = useRef(settings.threadLinksInSlide);
+  threadLinksRef.current = settings.threadLinksInSlide;
+  const slideThreadRef = useRef<string | null>(null);
+  slideThreadRef.current = slideOpen && selection?.kind === "thread" ? selection.id : null;
   useEffect(() => {
     const body = slideBodyRef.current;
-    if (body === null || !settings.threadLinksInSlide) return;
+    if (body === null) return;
     const onClick = (event: MouseEvent) => {
       debugLog("slide click", {
         target: event.target instanceof Element ? event.target.tagName : String(event.target),
@@ -2777,8 +2821,14 @@ function SwitchboardPage() {
       const row = anchor === null ? (target?.closest(CARD_ROW_SELECTOR) ?? null) : null;
       let id: string | null = null;
       if (anchor !== null && body.contains(anchor)) {
-        id = threadIdFromHref(anchor.getAttribute("href") ?? "", window.location.origin);
-      } else if (row !== null && body.contains(row)) {
+        const href = anchor.getAttribute("href") ?? "";
+        id = threadLinksRef.current ? threadIdFromHref(href, window.location.origin) : null;
+        if (id === null && openLinkedFile(href, slideThreadRef.current, byIdRef.current)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      } else if (row !== null && body.contains(row) && threadLinksRef.current) {
         id = cardRowThread(row, byIdRef.current.values());
         debugLog("card row", { title: row.getAttribute("title"), id });
       }
@@ -2789,7 +2839,7 @@ function SwitchboardPage() {
     };
     body.addEventListener("click", onClick, true);
     return () => body.removeEventListener("click", onClick, true);
-  }, [settings.threadLinksInSlide]);
+  }, []);
 
   // ←: back along the links you followed, then back to the list.
   const goBack = useCallback(() => {

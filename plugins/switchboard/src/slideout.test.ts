@@ -14,7 +14,38 @@ import {
   threadIdForTitle,
   threadIdFromHref,
   untouched,
+  workspaceFileFromHref,
 } from "./slideout.ts";
+
+test("a link in the chat to a workspace file gives its path from the workspace root", () => {
+  const root = "/Users/someone/My Drive/workspace";
+  assert.equal(workspaceFileFromHref("notes/call-sheet.md", root), "notes/call-sheet.md");
+  assert.equal(workspaceFileFromHref("./notes/a b.md", root), "notes/a b.md");
+  assert.equal(workspaceFileFromHref("notes/a%20b.md#L12", root), "notes/a b.md");
+  assert.equal(workspaceFileFromHref("notes/../plan.md?x=1", root), "plan.md");
+  assert.equal(workspaceFileFromHref(`${root}/notes/call-sheet.md`, root), "notes/call-sheet.md");
+  assert.equal(
+    workspaceFileFromHref("file:///Users/someone/My%20Drive/workspace/notes/call-sheet.md", root),
+    "notes/call-sheet.md",
+  );
+  // Without the root, only a relative link can be placed.
+  assert.equal(workspaceFileFromHref("notes/call-sheet.md", null), "notes/call-sheet.md");
+  assert.equal(workspaceFileFromHref(`${root}/notes/call-sheet.md`, null), null);
+});
+
+test("other links aren't workspace files", () => {
+  const root = "/Users/someone/workspace";
+  assert.equal(workspaceFileFromHref("https://example.com/a.md", root), null);
+  assert.equal(workspaceFileFromHref("mailto:someone@example.com", root), null);
+  assert.equal(workspaceFileFromHref("#section", root), null);
+  assert.equal(workspaceFileFromHref("//example.com/a.md", root), null);
+  assert.equal(workspaceFileFromHref("/Users/someone/elsewhere/a.md", root), null);
+  assert.equal(workspaceFileFromHref("/Users/someone/workspace-two/a.md", root), null);
+  assert.equal(workspaceFileFromHref("file:///etc/hosts", root), null);
+  assert.equal(workspaceFileFromHref("../outside.md", root), null);
+  assert.equal(workspaceFileFromHref("notes/", root), null);
+  assert.equal(workspaceFileFromHref("", root), null);
+});
 
 test("the first guess is the column and a panel as wide as it", () => {
   assert.equal(firstGrowWidth({ column: 500, scale: 1 }), 1000);
