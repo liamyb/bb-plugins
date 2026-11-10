@@ -233,7 +233,10 @@ no thread in that section), the main button is New chat instead.
 
 On the right of the title bar, beside the close and panel buttons, two small rings show how
 much of your plan's current session and week you've used, amber from 80% and red from 95%.
-Hovering gives both reset times. The figures are bb's own plan limits
+Hover over them for a card with when each resets and how long that is, such as "Resets at 17:00
+(in 2h 10m)" and "Resets Mon 09:00 (in 5d 18h)", in your Mac's own time. It shows straight away,
+and in a window that isn't the active one too, which the browser's own tooltip it replaced
+didn't. The figures are bb's own plan limits
 (`system.usageLimits`, the same windows Usage Meter shows), for Claude Code if it's signed in,
 else the first provider that is. They're read when the page opens, once a minute while the
 window is visible, and whenever it comes back into view. A model's own weekly allowance, such

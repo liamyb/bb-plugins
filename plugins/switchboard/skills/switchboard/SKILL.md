@@ -80,7 +80,13 @@ the `frontDesk` section with the latest `pinnedAt`, or with none pinned the newe
 The gauge is the nav panel's `headerContent` (right of the title bar), from
 `sdk.system.usageLimits()` (`GET /api/v1/system/usage-limits`): the `five-hour` and `weekly`
 windows without a `model`, for `claude-code` if its status is `ok`, else the first provider
-that is. Rules in `src/usage.ts`; read every 60 seconds while visible.
+that is. Rules in `src/usage.ts`; read every 60 seconds while visible. Hovering shows a card
+(`.sb-usage-card`, appended to `document.body` so the title row doesn't clip it) with
+`resetLine` for each window: "Session 62% used" over "Resets at 17:00 (in 2h 10m)", local time.
+It replaced a native `title` tooltip, which waits about a second and on macOS doesn't show
+while the window isn't the active one (Liam couldn't find the reset times, 10 Nov). The gauge
+is also `app-region: no-drag`, a safeguard: replaying bb's drag areas over a faked Mac window
+found the gauge already cut out of the title bar's drag strip.
 
 The rail badge (`experimental_useBadge` on the nav panel) is Asking you plus Replies, tone
 `warning` while anything is asking, computed in every window. Setting `railBadge` turns it off.

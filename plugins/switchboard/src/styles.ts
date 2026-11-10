@@ -463,6 +463,38 @@ export const CSS = `
   align-items: center;
   gap: 0.25rem;
 }
+/* In bb's Mac app the title bar drags the window, which swallows the hover:
+   the gauge is cut out of it, so hovering it shows when each window resets. */
+.sb-usage {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: default;
+}
+.sb-usage-card {
+  position: fixed;
+  z-index: 2147483000;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius, 0.5rem) * 0.75);
+  background: var(--popover, var(--card, var(--background, var(--canvas))));
+  color: var(--popover-foreground, var(--foreground, inherit));
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.16);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.sb-usage-card-row {
+  display: grid;
+}
+.sb-usage-card-title {
+  font-weight: 600;
+}
+.sb-usage-card-detail {
+  color: var(--muted-foreground);
+}
 .sb-usage-ring {
   flex: none;
 }

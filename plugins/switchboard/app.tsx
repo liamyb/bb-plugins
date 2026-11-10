@@ -166,7 +166,7 @@ import {
   type FileTab,
   type PanelMemory,
 } from "./src/panelfiles";
-import { summariseUsage, usageLabel, usageTone, usageWord, type UsageWindow } from "./src/usage";
+import { resetLine, summariseUsage, usageLabel, usageTone, usageWord, type UsageWindow } from "./src/usage";
 import { CSS, SLIDE_MS, STYLE_ID, WIDE_MIN_PX } from "./src/styles";
 
 /** The nav panel's `path`: the page is at /plugins/<pluginId>/switchboard. */
@@ -3500,10 +3500,49 @@ function UsageGauge() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [sdk, enabled]);
+  // Hover for when each window resets. The card goes on the page's body, so
+  // the title bar (which bb clips, and drags the window by) doesn't hide it.
+  const gaugeRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    const anchor = gaugeRef.current;
+    if (!hover || windows === null || anchor === null) return;
+    const card = document.createElement("div");
+    card.className = "sb-usage-card";
+    card.setAttribute("role", "tooltip");
+    const at = Date.now();
+    for (const item of windows) {
+      const line = resetLine(item, at);
+      const row = document.createElement("div");
+      row.className = "sb-usage-card-row";
+      const title = document.createElement("span");
+      title.className = "sb-usage-card-title";
+      title.textContent = line.title;
+      const detail = document.createElement("span");
+      detail.className = "sb-usage-card-detail";
+      detail.textContent = line.detail;
+      row.append(title, detail);
+      card.append(row);
+    }
+    document.body.append(card);
+    const box = anchor.getBoundingClientRect();
+    const width = card.offsetWidth;
+    const left = Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8));
+    card.style.left = `${Math.round(left)}px`;
+    card.style.top = `${Math.round(box.bottom + 6)}px`;
+    return () => card.remove();
+  }, [hover, windows, now]);
   if (!enabled || windows === null) return null;
   const label = usageLabel(windows, now);
   return (
-    <div className="sb-usage" role="img" aria-label={`Usage: ${label}`} title={label}>
+    <div
+      ref={gaugeRef}
+      className="sb-usage"
+      role="img"
+      aria-label={`Usage: ${label}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       {windows.map((item) => (
         <span
           key={item.key}

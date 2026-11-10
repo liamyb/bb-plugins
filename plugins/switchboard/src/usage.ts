@@ -94,7 +94,35 @@ export function formatReset(resetsAt: number, now: number): string {
   return `${at.getDate()} ${MONTHS[at.getMonth()]}`;
 }
 
-/** The gauge's tooltip and accessible name. */
+/**
+ * How long until a window resets: "in 2h 10m", "in 45m", "in 3d 4h", or
+ * "any moment now" within the last minute.
+ */
+export function formatCountdown(resetsAt: number, now: number): string {
+  const minutes = Math.floor((resetsAt - now) / 60_000);
+  if (minutes < 1) return "any moment now";
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return hours > 0 ? `in ${days}d ${hours}h` : `in ${days}d`;
+  if (hours > 0) return mins > 0 ? `in ${hours}h ${mins}m` : `in ${hours}h`;
+  return `in ${mins}m`;
+}
+
+/**
+ * The hover card's line for one window: "Session resets at 17:00 (in 2h 10m)",
+ * "Week resets Mon 09:00 (in 6d 23h)", with how much is used ahead of it.
+ */
+export function resetLine(window: UsageWindow, now: number): { title: string; detail: string } {
+  const title = `${WORDS[window.key]} ${window.usedPercent}% used`;
+  if (window.resetsAt === null) return { title, detail: "bb doesn't say when it resets" };
+  const when = formatReset(window.resetsAt, now);
+  const at = /^\d/.test(when) && when.includes(":") ? `at ${when}` : when;
+  const countdown = formatCountdown(window.resetsAt, now);
+  return { title, detail: `Resets ${at} (${countdown})` };
+}
+
+/** The gauge's accessible name, and what its hover card says in one line. */
 export function usageLabel(windows: readonly UsageWindow[], now: number): string {
   return windows
     .map((window) => {
