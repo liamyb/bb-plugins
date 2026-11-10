@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-switchboard",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "description": "A compact list of the chats open in your bb panes, with bb's own chat sliding open in place. Made for a small second bb window.",
@@ -11,7 +11,7 @@
   },
   "bb": {
     "name": "Switchboard",
-    "description": "A page listing the chats open in your split panes, in any bb window, with a state word each (Needs you, Working, Done, Idle), and a Waiting view of every thread waiting on you across all sections: asking you, replies you haven't read, FYI from other threads, and what's working. Click a row and bb's chat slides open in place; Ask the desk opens today's front desk thread, and a + beside it starts a blank chat on your project checkout. The title bar shows your plan's session and week usage. The rail icon counts what's asking you or has replied. Sized for a 500px second window (Cmd+Shift+N), where bb's side panel slides out beside the list instead of covering it and thread links open in the slide; it works in the main window too. Cmd+Shift+S opens it.",
+    "description": "A page listing the chats open in your split panes, in any bb window, with a state word each (Needs you, Working, Done, Idle), and a Waiting view of every thread waiting on you across all sections: asking you, replies you haven't read, FYI from other threads, and what's working. Click a row and bb's chat slides open in place; Ask the desk opens today's front desk thread, and a + beside it starts a blank chat on your project checkout. The title bar shows your plan's session and week usage. The rail icon counts what's asking you or has replied. Sized for a 500px second window (Cmd+Shift+N), where bb's side panel slides out beside the list instead of covering it and thread links open in the slide; it works in the main window too. A Commit button at the top of the slide commits the chat's checkout when it has changes. Cmd+Shift+S opens it.",
     "branding": {
       "icon": "./assets/icon.svg"
     },

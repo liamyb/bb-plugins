@@ -549,6 +549,76 @@ export const CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The Commit button in the slide's header, and its confirm (src/commit.ts). */
+.sb-slide-header {
+  position: relative;
+  z-index: 3;
+}
+.sb-commit {
+  flex: none;
+}
+.sb-commit-count {
+  min-width: 1.125rem;
+  padding: 0.125rem 0.3125rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 16%, transparent);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: center;
+}
+.sb-commit-confirm {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0.5rem;
+  width: min(22rem, calc(100% - 1rem));
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 0.5rem);
+  background: var(--popover, var(--card, var(--background, var(--canvas))));
+  color: var(--popover-foreground, inherit);
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.18);
+  font-size: 0.8125rem;
+  white-space: normal;
+}
+.sb-commit-question {
+  margin: 0;
+  font-weight: 600;
+}
+.sb-commit-paths {
+  max-height: 10rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  list-style: none;
+}
+.sb-commit-paths > li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-commit-more {
+  font-family: inherit;
+  font-style: italic;
+}
+.sb-commit-note {
+  margin: 0 0 0.625rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.sb-commit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.sb-button:disabled {
+  opacity: 0.6;
+}
 .sb-icon-button {
   display: inline-flex;
   flex: none;

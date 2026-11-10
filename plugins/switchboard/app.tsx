@@ -66,6 +66,14 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import {
+  commitFailure,
+  commitLabel,
+  confirmQuestion,
+  isNothingToCommit,
+  listedPaths,
+  type CheckoutChanges,
+} from "./src/commit";
+import {
   STATE_LABEL,
   buildList,
   nextRuns,
@@ -266,6 +274,7 @@ interface Settings {
   stayOnSwitchboard: boolean;
   slideOutPanel: boolean;
   threadLinksInSlide: boolean;
+  commitButton: boolean;
 }
 
 /** Settings as the page reads them. `values` is undefined until bb has loaded them. */
@@ -289,6 +298,7 @@ export function parseSettings(values: Record<string, unknown> | undefined): Sett
     stayOnSwitchboard: values?.stayOnSwitchboard !== false,
     slideOutPanel: values?.slideOutPanel !== false,
     threadLinksInSlide: values?.threadLinksInSlide !== false,
+    commitButton: values?.commitButton !== false,
   };
 }
 
@@ -3134,6 +3144,9 @@ function SwitchboardPage() {
               "New chat"
             ) : null}
           </span>
+          {selection?.kind === "thread" && settings.commitButton ? (
+            <CommitButton key={selection.id} thread={byId.get(selection.id) ?? null} />
+          ) : null}
         </div>
         {wide ? null : stayBar}
         <div className="sb-slide-body" ref={slideBodyRef}>
@@ -3166,6 +3179,155 @@ function SwitchboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The slide's Commit button (src/commit.ts). It shows while the open chat's
+ * checkout has uncommitted changes, with the count; a click lists them and
+ * asks, and Commit makes bb's own call, which stages everything and has bb
+ * write the message. Read when the chat opens, whenever its state changes
+ * (a turn that wrote files has ended), when the window comes back, and once
+ * a minute while it shows.
+ */
+function CommitButton({ thread }: { thread: PluginSidebarThread | null }) {
+  const rpc = useRpc<typeof rpcContract>();
+  const sdk = useSdk();
+  const environment = thread !== null && !thread.isArchived ? thread.environment : null;
+  const environmentId = environment?.id ?? null;
+  const checkoutPath = environment?.path ?? null;
+  const checkout =
+    checkoutPath !== null
+      ? (checkoutPath.split("/").filter((part) => part.length > 0).pop() ?? null)
+      : (environment?.name ?? null);
+  const [read, setRead] = useState<{ environmentId: string; changes: CheckoutChanges | null } | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const latest = useRef(0);
+
+  const refresh = useCallback(
+    async (fresh = false) => {
+      if (environmentId === null) return;
+      const asked = ++latest.current;
+      let changes: CheckoutChanges | null = null;
+      try {
+        changes = await rpc.call("checkoutChanges", { environmentId, fresh });
+      } catch {
+        changes = null;
+      }
+      if (asked === latest.current) setRead({ environmentId, changes });
+    },
+    [rpc, environmentId],
+  );
+
+  const threadStatus = thread?.status;
+  useEffect(() => {
+    void refresh();
+  }, [refresh, threadStatus]);
+
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    const timer = window.setInterval(onReturn, 60_000);
+    return () => {
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.clearInterval(timer);
+    };
+  }, [refresh]);
+
+  const changes = read !== null && read.environmentId === environmentId ? read.changes : null;
+  const count = changes?.count ?? 0;
+
+  useEffect(() => {
+    if (count === 0) setAsking(false);
+  }, [count]);
+
+  useEffect(() => {
+    if (!asking) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) setAsking(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [asking, busy]);
+
+  if (environmentId === null || changes === null || count === 0) return null;
+
+  async function commit() {
+    if (environmentId === null || busy) return;
+    setBusy(true);
+    try {
+      const result = await sdk.environments.commit({ environmentId });
+      toast.success(`Committed ${result.commitSha.slice(0, 7)}`, { description: result.commitSubject });
+      setAsking(false);
+    } catch (error) {
+      if (isNothingToCommit(error)) {
+        toast("Nothing to commit: it's all in already.");
+        setAsking(false);
+      } else {
+        const reason = commitFailure(error);
+        toast.error("The commit didn't go through", reason.length > 0 ? { description: reason } : undefined);
+      }
+    } finally {
+      setBusy(false);
+      void refresh(true);
+    }
+  }
+
+  const listed = listedPaths(changes);
+  return (
+    <>
+      <button
+        type="button"
+        className="sb-button sb-commit"
+        aria-label={commitLabel(count)}
+        aria-expanded={asking}
+        aria-haspopup="dialog"
+        title={commitLabel(count)}
+        onClick={() => {
+          if (!asking) void refresh(true);
+          setAsking((open) => !open);
+        }}
+      >
+        Commit
+        <span className="sb-commit-count">{count}</span>
+      </button>
+      {asking ? (
+        <div className="sb-commit-confirm" role="dialog" aria-label="Commit">
+          <p className="sb-commit-question">{confirmQuestion(changes, checkout)}</p>
+          <ul className="sb-commit-paths">
+            {listed.paths.map((path) => (
+              <li key={path} title={path}>
+                {path}
+              </li>
+            ))}
+            {listed.more > 0 ? <li className="sb-commit-more">and {listed.more} more</li> : null}
+          </ul>
+          <p className="sb-commit-note">
+            Everything there goes in, new files too, the same as bb's own Commit. bb writes the message.
+          </p>
+          <div className="sb-commit-actions">
+            <button type="button" className="sb-button" disabled={busy} onClick={() => setAsking(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="sb-button"
+              data-primary=""
+              disabled={busy}
+              autoFocus
+              onClick={() => void commit()}
+            >
+              {busy ? "Committing…" : "Commit"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

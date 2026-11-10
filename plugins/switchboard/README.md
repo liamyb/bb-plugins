@@ -7,8 +7,9 @@ the view. A Waiting view gathers every thread that's waiting on you, in every se
 rail icon counts the ones asking you or with a reply. An Ask the desk button opens today's
 front desk thread, and the + beside it starts a blank chat on your project checkout. The title
 bar shows how much of your plan's session and week you've used. In the small window, bb's side
-panel slides out beside the list rather than covering it, and links to other threads open in
-the slide.
+panel slides out beside the list rather than covering it, links to other threads open in
+the slide, and a Commit button at the top of the slide commits the chat's checkout when it has
+changes.
 
 It's made for a small second bb window: Cmd+Shift+N for a new window, click the Switchboard
 icon in the rail, and size it to about 500 by 800. It works as a page in the main window too,
@@ -119,6 +120,17 @@ thread's own view. The link can be relative (`current-projects/notes.md`), an ab
 inside the workspace, or a `file://` URL. bb's chat only gets a file opener when it sits inside
 a thread view, so without this a relative link resolved against Switchboard's own address and
 showed "This plugin panel is not available".
+
+**Commit.** bb 0.48 moved its Commit button into the thread header, and hid it unless the Git
+plugin's "Show Commit button" is on. The slide shows bb's chat without that header, so a chat
+opened here had no way to commit. When the open chat's checkout has uncommitted changes, the
+slide's header shows **Commit** with the count. A click lists the changes and asks; Commit then
+makes the same call bb's button does, which stages everything in the checkout (new files too,
+nothing `.gitignore` leaves out) and has bb write the message ("bb: automated commit" when its
+commit-message service is off). A toast gives the commit. The count is read when the chat opens,
+whenever its state changes, when the window comes back, and once a minute while it shows.
+Switchboard's server reads it with `git status`; a checkout on another machine shows no button.
+`commitButton` turns it off.
 
 - **Narrow page** (a 500px window): the chat slides over the whole list, with a back control
   in its header.
@@ -276,6 +288,7 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `stayOnSwitchboard` | `true` | A narrow window showing Switchboard goes straight back to it when something other than you opens a thread there, such as an agent's `bb thread open` |
 | `slideOutPanel` | `true` | In a window under 768px, the side panel slides out beside the list (the window widens) instead of covering it, and an agent's file comes over to it |
 | `threadLinksInSlide` | `true` | A link to another thread in the slide's chat, or a row of a Threads card in it, opens that thread in the slide, with ← stepping back |
+| `commitButton` | `true` | A Commit button with the count at the top of the slide while the open chat's checkout has uncommitted changes. It asks first, then commits everything there, as bb's own Commit does |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.
@@ -296,7 +309,7 @@ in Settings.
 ## Tests
 
 `npm test` runs `src/panes.test.ts`, `src/current.test.ts`, `src/waiting.test.ts`,
-`src/usage.test.ts`, `src/slideout.test.ts` and `src/panelfiles.test.ts` on Node's own test
-runner (Node 23.6 or later). The pane, list, Waiting, desk, usage, slide-out and panel-files
-rules are pure; `app.tsx` and `server.ts` are the bb glue.
+`src/usage.test.ts`, `src/slideout.test.ts`, `src/panelfiles.test.ts` and `src/commit.test.ts`
+on Node's own test runner (Node 23.6 or later). The pane, list, Waiting, desk, usage,
+slide-out, panel-files and commit rules are pure; `app.tsx` and `server.ts` are the bb glue.
 `npm run typecheck` needs `npm install` first.

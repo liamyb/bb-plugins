@@ -1,6 +1,6 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, its Ask the desk button and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, its Ask the desk button and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, committing from the slide or where bb's Commit button went, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
@@ -113,6 +113,19 @@ click listener in `app.tsx`.
   thread with it; when two threads share a title, `cardRowThread` falls back to the row's React
   props (a `thread` prop a level or two up, not bb's API), and with neither the click is left to
   bb. The row's "Show the whole message" button isn't matched, so it still expands the preview.
+- **Commit:** bb 0.48.0 hid its own Commit button by default (the Git plugin's
+  `showCommitButton`, `bb plugin config bb--git set showCommitButton true`) and made it a
+  `placement: "header"` thread action, which bb shows only in the open thread's header (folded
+  into the header's thread menu at compact width) and never in other menus, so it's in neither
+  the slide (bb's chat without the header) nor Switchboard's row menus. `CommitButton` in
+  `app.tsx` puts one in `.sb-slide-header`: the server's `checkoutChanges` RPC reads
+  `git --no-optional-locks status --porcelain=v1 -z --branch --untracked-files=all` in the
+  environment's path (`bb.sdk.environments.get`), parsed by `parseStatus` in `src/commit.ts`,
+  shared for 2s across windows; the button shows while the count is above 0, a click opens a
+  confirm listing up to 8 paths, and Commit calls `sdk.environments.commit({ environmentId })`
+  (POST `/api/v1/environments/<id>/actions` `{action: "commit"}`), the same call as bb's button:
+  `git add -A`, "No changes to commit" when there's nothing, then `git commit --no-verify` with
+  bb's message. Not tied to bb's `showCommitButton`. Setting `commitButton`.
 - **Slide-out:** when the page's panel opens (`experimental_usePanelTabs().open`) in bb's compact
   layout (under 768px), `growForPanel` adds `CHROME_CSS` (above 768px, while a `.sb-page` is on
   screen: hides `[data-sidebar=gap]`, `[data-sidebar=panel]`, the sidebar trigger overlay and any
@@ -228,6 +241,7 @@ background commands get no lines.
   (the window widens) instead of covering it, and an agent's file comes over to it.
 - `threadLinksInSlide` (boolean, default `true`): thread links in the slide's chat open in the
   slide, with ← stepping back.
+- `commitButton` (boolean, default `true`): the Commit button at the top of the slide.
 
 ## How panes cross windows
 

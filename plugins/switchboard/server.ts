@@ -4,8 +4,11 @@
 // reports in kv, publishes it over realtime when it changes, and relays
 // "Open in a pane" to the window that owns the panes. The rules are pure in
 // src/panes.ts.
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { parseStatus, SENT_PATHS, type CheckoutChanges } from "./src/commit";
 import {
   DEFAULT_TTL_SECONDS,
   MAX_TTL_SECONDS,
@@ -71,6 +74,27 @@ export const rpcContract = defineRpcContract({
   openInPane: {
     input: z.object({ threadId: z.string().min(1).max(100) }).strict(),
     output: z.object({ windowId: z.string().nullable() }),
+  },
+  /**
+   * What's uncommitted in an environment's checkout, for the slide's Commit
+   * button: the branch, how many paths have changes and the first few. Null
+   * when it isn't a git checkout on this machine.
+   */
+  checkoutChanges: {
+    input: z
+      .object({
+        environmentId: z.string().min(1).max(100),
+        /** Skip the read a moment old: right after a commit. */
+        fresh: z.boolean().optional(),
+      })
+      .strict(),
+    output: z
+      .object({
+        branch: z.string().nullable(),
+        count: z.number().int().nonnegative(),
+        paths: z.array(z.string()).max(SENT_PATHS),
+      })
+      .nullable(),
   },
   /** A line for the plugin log from a window: the slide-out's step timings. */
   note: {
@@ -176,6 +200,13 @@ export default function switchboard(bb: BbPluginApi): void {
         "In a window under 768px, bb's side panel covers the whole window. With this on, the window widens to the right instead, so the panel sits beside Switchboard and the list keeps its width; closing the panel shrinks the window back, unless you've resized it by hand. A file an agent opens in a window that stayed on Switchboard comes over to this panel. Works in bb's Mac app; a web browser can't resize its window.",
       default: true,
     },
+    commitButton: {
+      type: "boolean",
+      label: "Commit button in the slide",
+      description:
+        "bb's own Commit button sits in the thread header, which the slide doesn't show. With this on, when the open chat's checkout has uncommitted changes, a Commit button with the count shows at the top of the slide. It lists the changes and asks first, then commits everything there, new files too, as bb's button does, with the message bb writes.",
+      default: true,
+    },
     threadLinksInSlide: {
       type: "boolean",
       label: "Thread links open in the slide",
@@ -228,7 +259,54 @@ export default function switchboard(bb: BbPluginApi): void {
     return summary;
   }
 
+  // One git status per checkout at a time, and a read a moment old is
+  // shared, so several windows asking together run it once.
+  const changesInFlight = new Map<string, Promise<CheckoutChanges | null>>();
+  const changesRead = new Map<string, { at: number; changes: CheckoutChanges | null }>();
+  const CHANGES_FRESH_MS = 2_000;
+
+  async function readCheckoutChanges(environmentId: string): Promise<CheckoutChanges | null> {
+    const environment = await bb.sdk.environments.get({ environmentId }).catch(() => null);
+    const path = environment?.path;
+    if (typeof path !== "string" || path.length === 0) return null;
+    try {
+      // --no-optional-locks: a status never takes the index lock from an
+      // agent's own git command running at the same moment.
+      const { stdout } = await promisify(execFile)(
+        "git",
+        ["--no-optional-locks", "-C", path, "status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"],
+        { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 20_000 },
+      );
+      return parseStatus(stdout);
+    } catch (error) {
+      bb.log.debug(`Checkout status for ${environmentId}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  function checkoutChanges(environmentId: string, fresh: boolean): Promise<CheckoutChanges | null> {
+    const read = changesRead.get(environmentId);
+    if (!fresh && read !== undefined && Date.now() - read.at < CHANGES_FRESH_MS) {
+      return Promise.resolve(read.changes);
+    }
+    const running = changesInFlight.get(environmentId);
+    if (running !== undefined && !fresh) return running;
+    const run = readCheckoutChanges(environmentId)
+      .then((changes) => {
+        changesRead.set(environmentId, { at: Date.now(), changes });
+        return changes;
+      })
+      .finally(() => {
+        if (changesInFlight.get(environmentId) === run) changesInFlight.delete(environmentId);
+      });
+    changesInFlight.set(environmentId, run);
+    return run;
+  }
+
   bb.rpc.register(rpcContract, {
+    checkoutChanges({ environmentId, fresh }) {
+      return checkoutChanges(environmentId, fresh === true);
+    },
     reportPanes(report) {
       return serial(async () => {
         const now = Date.now();
