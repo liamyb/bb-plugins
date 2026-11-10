@@ -640,7 +640,21 @@ const pageState: {
   selection: Selection;
   slideOpen: boolean;
   trail: string[];
-} = { mounted: 0, leftAt: null, selection: null, slideOpen: false, trail: [] };
+  /** Where you were reading in the slide's chat: how far above its end. */
+  scroll: { threadId: string; fromBottom: number } | null;
+} = { mounted: 0, leftAt: null, selection: null, slideOpen: false, trail: [], scroll: null };
+
+/** Within this of the end, a chat counts as read to the end: bb keeps it there. */
+const AT_END_PX = 48;
+
+/** The element that scrolls the slide's chat, or null while it isn't drawn. */
+function chatScroller(body: HTMLElement): HTMLElement | null {
+  for (const element of body.querySelectorAll<HTMLElement>("*")) {
+    if (element.scrollHeight <= element.clientHeight + 1) continue;
+    if (/(auto|scroll)/.test(window.getComputedStyle(element).overflowY)) return element;
+  }
+  return null;
+}
 
 /** When you last clicked, pressed a key or focused this window, or Switchboard acted for you. */
 const inputState = { lastAt: 0 };
@@ -2344,14 +2358,13 @@ async function syncPanelContents(options: { mayClosePanel: boolean }): Promise<s
  * the thread you're in. Whether it's open is yours: with it open, moving to
  * another chat swaps the documents (or closes it when the chat has none);
  * with it closed, nothing opens; opening it shows the chat's documents (done
- * before the window widens, in `growForPanel`). An agent's file stays beside
- * whatever chat you're in while its bar is up. With no chat in the slide,
- * nothing moves.
+ * before the window widens, in `growForPanel`). With no chat in the slide,
+ * nothing moves. Only what you do moves it: an agent's file waits behind the
+ * bar's Show (see `useStayedFile`).
  */
 function usePanelFollowsSlide(
   enabled: boolean,
   view: string | null,
-  stayed: Stayed | null,
   environmentOf: (threadId: string) => string | undefined,
 ): void {
   const tabs = usePanelTabs();
@@ -2360,7 +2373,7 @@ function usePanelFollowsSlide(
   environmentRef.current = environmentOf;
   const fileTabs = useMemo(() => fileTabsOf(tabs), [tabs]);
   const signature = fileTabs.map((tab) => tab.key).join("\n");
-  const keep = stayed !== null && stayed.file ? stayed.threadId : null;
+  const keep: string | null = null;
   panelState.view = enabled ? view : null;
   panelState.keep = keep;
 
@@ -2403,21 +2416,12 @@ function usePanelFollowsSlide(
 /**
  * After an agent's `bb thread open` sent this window back to Switchboard
  * (see `stayStore`), the file it opened, from bb's recent items for that
- * thread, opened in Switchboard's own side panel instead, which then slides
- * out. bb writes the item once the thread view has opened the file, so it's
- * looked for for a couple of seconds.
+ * thread, so the bar can name it. Nothing opens: what's on screen is yours
+ * (Liam, 10 Nov), and the bar's Show opens the thread and the file
+ * (`openAgentFile`). bb writes the item once the thread view has opened the
+ * file, so it's looked for for a couple of seconds.
  */
-function useStayedFile(
-  enabled: boolean,
-  stayed: Stayed | null,
-  environmentOf: (threadId: string) => string | undefined,
-  onFile: (threadId: string) => void,
-): void {
-  const navigate = useBbNavigate();
-  const environmentRef = useRef(environmentOf);
-  environmentRef.current = environmentOf;
-  const onFileRef = useRef(onFile);
-  onFileRef.current = onFile;
+function useStayedFile(enabled: boolean, stayed: Stayed | null): void {
   const threadId = stayed?.threadId ?? null;
   const at = stayed?.at ?? 0;
   const looking = stayed !== null && stayed.file === undefined;
@@ -2440,38 +2444,60 @@ function useStayedFile(
         else stayStore.setFile(threadId, null);
         return;
       }
-      const environmentId = environmentRef.current(threadId);
-      const target =
-        file.source === "thread-storage"
-          ? ({ kind: "thread-storage", threadId, path: file.path } as const)
-          : environmentId === undefined
-            ? null
-            : ({ kind: "workspace", environmentId, path: file.path } as const);
-      // Its tab belongs to the agent's thread, not the chat in the slide.
-      if (target !== null) panelState.agent = { threadId, path: file.path };
-      const opened =
-        target !== null && navigate.experimental_openFilePreview({ target, location: null });
-      debugLog("stayed file", { threadId, file, target, opened, open: panelOpenNow() });
-      stayStore.setFile(threadId, opened ? file : null);
-      if (!opened) return;
-      onFileRef.current(threadId);
-      // In the compact layout bb adds the tab without showing the panel:
-      // select it, which does, and the panel slides out.
-      // A file tab, or a file opener's (a PDF opens in the PDF viewer's).
-      const tabFor = () => fileTabsOf(slideLive.tabs).find((tab) => tab.path === file.path);
-      void waitFor(() => tabFor() !== undefined || panelOpenNow(), 1500).then(() => {
-        const tab = tabFor();
-        // Not `cancelled`: recording the file re-runs this effect, which cancels.
-        if (stayStore.get()?.threadId !== threadId || tab === undefined || panelOpenNow()) return;
-        showPanelTab(tab.key);
-        debugLog("stayed file shown", { key: tab.key });
-      });
+      debugLog("stayed file", { threadId, file });
+      stayStore.setFile(threadId, file);
     };
     look();
     return () => {
       cancelled = true;
     };
-  }, [enabled, looking, threadId, at, navigate]);
+  }, [enabled, looking, threadId, at]);
+}
+
+/** Where an agent's file is, for bb's file preview; null when it can't be placed. */
+function agentFileTarget(threadId: string, file: RecentFile, environmentId: string | undefined) {
+  return file.source === "thread-storage"
+    ? ({ kind: "thread-storage", threadId, path: file.path } as const)
+    : environmentId === undefined
+      ? null
+      : ({ kind: "workspace", environmentId, path: file.path } as const);
+}
+
+/**
+ * The bar's Show for an agent's file: the file in Switchboard's side panel,
+ * which slides out, beside its thread in the slide. Its tab belongs to the
+ * agent's thread. Called once that thread is the slide's, so the panel's
+ * documents (`usePanelFollowsSlide`) take it as the chat's own.
+ */
+function openAgentFile(
+  navigate: BbNavigate,
+  threadId: string,
+  file: RecentFile,
+  target: NonNullable<ReturnType<typeof agentFileTarget>>,
+): boolean {
+  panelState.agent = { threadId, path: file.path };
+  const opened = navigate.experimental_openFilePreview({ target, location: null });
+  debugLog("agent file shown", { threadId, file, opened });
+  if (!opened) return false;
+  // In the compact layout bb adds the tab without showing the panel: select
+  // it, which does, and the panel slides out. A file tab, or a file opener's
+  // (a PDF opens in the PDF viewer's).
+  const tabFor = () => fileTabsOf(slideLive.tabs).find((tab) => tab.path === file.path);
+  void (async () => {
+    await waitFor(() => tabFor() !== undefined || panelOpenNow(), 1500);
+    const tab = tabFor();
+    if (tab !== undefined && !panelOpenNow()) showPanelTab(tab.key);
+    // bb sometimes shows the panel itself, and the window then widens with
+    // the chat's documents, the last one in front: once it's settled, the
+    // agent's file is the one showing.
+    await waitFor(() => slideOut.phase !== "growing" && panelOpenNow(), 4000);
+    await delay(150);
+    const settled = tabFor();
+    if (settled !== undefined && slideLive.tabs?.selectedKey !== settled.key) {
+      slideLive.panel?.selectTab(settled.key);
+    }
+  })();
+  return true;
 }
 
 /** The Switchboard page. */
@@ -2656,16 +2682,11 @@ function SwitchboardPage() {
     (threadId: string) => byId.get(threadId)?.environment?.id ?? undefined,
     [byId],
   );
-  // With no chat in the slide, an agent's file brings its thread with it.
-  const openThreadRef = useRef<(threadId: string) => void>(() => undefined);
-  const onAgentFile = useCallback((threadId: string) => {
-    if (pageState.slideOpen && pageState.selection?.kind === "thread") return;
-    openThreadRef.current(threadId);
-  }, []);
-  useStayedFile(settings.slideOutPanel, stayed, environmentOf, onAgentFile);
+  // An agent's file is only named on the bar; Show opens it.
+  useStayedFile(settings.slideOutPanel, stayed);
   // The panel's files follow the chat in the slide.
   const slideView = slideOpen && selection?.kind === "thread" ? selection.id : null;
-  usePanelFollowsSlide(settings.slideOutPanel, slideView, stayed, environmentOf);
+  usePanelFollowsSlide(settings.slideOutPanel, slideView, environmentOf);
 
   // A new chat this page started drops out once bb no longer lists it
   // (archived, say). Only an id the list has carried at some point counts as
@@ -2698,20 +2719,30 @@ function SwitchboardPage() {
     },
     [showThread],
   );
-  // The bar's Show: the thread in the slide when its file came over to this
-  // page's panel; otherwise the thread itself, where bb shows the file. A
-  // click, so the window doesn't come straight back.
+  // The bar's Show: the thread in the slide, and the file its agent opened in
+  // Switchboard's side panel beside it. With no file found (or the panel
+  // turned off), the thread itself, where bb shows the file: a click, so the
+  // window doesn't come straight back.
   const showStayed = useCallback(() => {
     const current = stayStore.get();
     if (current === null) return;
-    if (current.file) {
-      openThread(current.threadId);
+    const file = current.file;
+    const target =
+      file && settings.slideOutPanel
+        ? agentFileTarget(current.threadId, file, environmentOf(current.threadId))
+        : null;
+    if (file && target !== null) {
+      const threadId = current.threadId;
+      openThread(threadId);
+      void waitFor(() => panelState.view === threadId, 1000).then(() =>
+        openAgentFile(navigate, threadId, file, target),
+      );
       return;
     }
     stayStore.clear();
     inputState.lastAt = Date.now();
     navigate.toThread(current.threadId);
-  }, [navigate, openThread]);
+  }, [navigate, openThread, environmentOf, settings.slideOutPanel]);
   const stayBar =
     stayed === null ? null : (
       <div className="sb-stay" role="status">
@@ -2721,7 +2752,7 @@ function SwitchboardPage() {
           </span>
           <span className="sb-hint">
             {stayed.file
-              ? `An agent opened ${fileName(stayed.file.path)} beside Switchboard.`
+              ? `An agent opened ${fileName(stayed.file.path)}. Show opens it here.`
               : "An agent opened this in bb, so Switchboard stayed put."}
           </span>
         </div>
@@ -2739,7 +2770,6 @@ function SwitchboardPage() {
         </button>
       </div>
     );
-  openThreadRef.current = openThread;
 
   // Opening a thread from Waiting reads it: bb's read state, and the seen map
   // for a thread whose pane finished unwatched.
@@ -2850,6 +2880,77 @@ function SwitchboardPage() {
     body.addEventListener("click", onClick, true);
     return () => body.removeEventListener("click", onClick, true);
   }, []);
+
+  // Where you were reading, so the page bb rebuilds after taking the window
+  // to an agent's thread and back (or as the window widens) opens the chat
+  // at the same place rather than at its end.
+  useEffect(() => {
+    const body = slideBodyRef.current;
+    if (body === null) return;
+    const onScroll = (event: Event) => {
+      const element = event.target;
+      const threadId = slideThreadRef.current;
+      if (!(element instanceof HTMLElement) || threadId === null) return;
+      if (element.scrollHeight <= element.clientHeight + 1) return;
+      const fromBottom = element.scrollHeight - element.clientHeight - element.scrollTop;
+      pageState.scroll = { threadId, fromBottom: Math.max(0, Math.round(fromBottom)) };
+    };
+    body.addEventListener("scroll", onScroll, true);
+    return () => body.removeEventListener("scroll", onScroll, true);
+  }, []);
+  const [scrollBack] = useState(() => {
+    const saved = pageState.scroll;
+    const open = pageState.selection;
+    if (!restore || !pageState.slideOpen || saved === null || open?.kind !== "thread") return null;
+    return saved.threadId === open.id && saved.fromBottom > AT_END_PX ? saved : null;
+  });
+  useEffect(() => {
+    const body = slideBodyRef.current;
+    if (scrollBack === null || body === null) return;
+    // Put back once the chat has drawn that far, then held for a moment in
+    // case bb's chat scrolls itself to the end as it loads. Anything you do
+    // (scroll, click, a key) lets go.
+    let stopped = false;
+    let timer = 0;
+    const stop = () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+    const yours = { capture: true, passive: true } as const;
+    window.addEventListener("wheel", stop, yours);
+    window.addEventListener("touchstart", stop, yours);
+    window.addEventListener("pointerdown", stop, true);
+    window.addEventListener("keydown", stop, true);
+    const started = Date.now();
+    let placedAt: number | null = null;
+    let scroller: HTMLElement | null = null;
+    const tick = () => {
+      if (stopped) return;
+      if (scroller === null || !scroller.isConnected) scroller = chatScroller(body);
+      if (scroller !== null) {
+        const room = scroller.scrollHeight - scroller.clientHeight;
+        if (room >= scrollBack.fromBottom) {
+          const want = room - scrollBack.fromBottom;
+          if (Math.abs(scroller.scrollTop - want) > 2) scroller.scrollTop = want;
+          placedAt ??= Date.now();
+        }
+      }
+      const now = Date.now();
+      if (now - started < 4000 && (placedAt === null || now - placedAt < 800)) {
+        timer = window.setTimeout(tick, 80);
+      } else {
+        debugLog("reading place", { fromBottom: scrollBack.fromBottom, placed: placedAt !== null });
+      }
+    };
+    timer = window.setTimeout(tick, 80);
+    return () => {
+      stop();
+      window.removeEventListener("wheel", stop, yours);
+      window.removeEventListener("touchstart", stop, yours);
+      window.removeEventListener("pointerdown", stop, true);
+      window.removeEventListener("keydown", stop, true);
+    };
+  }, [scrollBack]);
 
   // ←: back along the links you followed, then back to the list.
   const goBack = useCallback(() => {

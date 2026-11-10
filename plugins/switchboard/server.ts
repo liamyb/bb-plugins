@@ -190,14 +190,14 @@ export default function switchboard(bb: BbPluginApi): void {
       type: "boolean",
       label: "Keep a narrow window on Switchboard",
       description:
-        "bb sends a thread an agent opens (bb thread open, which is how agents put a file in the side panel) to every window. A window under 768px that's showing Switchboard goes straight back to it, with a bar naming the thread and a Show button, unless you clicked, pressed a key or focused that window just before.",
+        "bb sends a thread an agent opens (bb thread open, which is how agents put a file in the side panel) to every window. A window under 768px that's showing Switchboard goes straight back to it, with the chat you were reading where you left it and a bar naming the thread with a Show button, unless you clicked, pressed a key or focused that window just before.",
       default: true,
     },
     slideOutPanel: {
       type: "boolean",
       label: "Slide the side panel out of a narrow window",
       description:
-        "In a window under 768px, bb's side panel covers the whole window. With this on, the window widens to the right instead, so the panel sits beside Switchboard and the list keeps its width; closing the panel shrinks the window back, unless you've resized it by hand. A file an agent opens in a window that stayed on Switchboard comes over to this panel. Works in bb's Mac app; a web browser can't resize its window.",
+        "In a window under 768px, bb's side panel covers the whole window. With this on, the window widens to the right instead, so the panel sits beside Switchboard and the list keeps its width; closing the panel shrinks the window back, unless you've resized it by hand. When an agent opens a file, the bar's Show opens it in this panel; nothing opens by itself. Works in bb's Mac app; a web browser can't resize its window.",
       default: true,
     },
     commitButton: {

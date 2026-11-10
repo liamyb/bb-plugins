@@ -151,17 +151,21 @@ click listener in `app.tsx`.
   `bb.thread.fixedPanelTabsState-<thread>-1`, secondary.tabs `workspace-file-preview`,
   `thread-storage-file-preview` and `plugin-panel` with `paramsJson`) plus the ones filed under it
   here: a tab is filed under the chat in the slide when it appeared, or the agent's thread for an
-  agent's file (`panelState.agent`); tabs seen within 1.5s of Switchboard first looking belong to
+  agent's file shown from the bar (`panelState.agent`); tabs seen within 1.5s of Switchboard first looking belong to
   no chat. Memory is in sessionStorage `bb-plugin-switchboard:panel-files`. Open or closed is
-  yours: with the panel open, a move to another chat closes other chats' documents (except the
-  agent's whose bar is up) and opens this chat's, closing the panel when nothing's left; with it
+  yours: with the panel open, a move to another chat closes other chats' documents and opens
+  this chat's, closing the panel when nothing's left; with it
   closed, nothing happens; `growForPanel` syncs first, so opening the panel shows the chat's
-  documents. The list moves nothing.
+  documents. The list moves nothing. Nothing an agent does moves it either (Liam, 10 Nov).
 - **Agent files:** after a stay (below), `useStayedFile` reads localStorage
-  `bb.thread.recentItems-<thread>-1` for a file opened in the last 10s, opens it with
-  `navigate.experimental_openFilePreview` (workspace target from the thread's environment, or
-  thread-storage), then selects its tab, since bb adds it without showing the panel. The bar
-  then names the file and Show opens the thread in the slide. While widened, the stay rule also
+  `bb.thread.recentItems-<thread>-1` for a file opened in the last 10s, only so the bar can name
+  it: nothing an agent does changes what's on screen (Liam's rule, 10 Nov 2026, after another
+  thread's `bb thread open` slid the panel out over the chat he was reading). The bar's Show (`showStayed`) opens the thread in the slide, waits until it's the
+  panel's view, then `openAgentFile` opens the file with `navigate.experimental_openFilePreview`
+  (workspace target from the thread's environment, or thread-storage), selects its tab (bb adds
+  it without showing the panel), and once any widening has settled selects it again, since
+  `growForPanel` puts the chat's last document in front when bb showed the panel itself.
+  Until 0.2.5 the file opened by itself and, with no chat in the slide, its thread did too. While widened, the stay rule also
   applies (`widened` in `shouldStayOnSwitchboard`): bb adds the thread as a split, which is closed
   with that pane's own Close button (`[data-split-pane-id=<paneId>]`).
 - **No in-between layouts:** in the narrow window a capture-phase click on bb's "Show right
@@ -238,7 +242,7 @@ background commands get no lines.
 - `stayOnSwitchboard` (boolean, default `true`): a narrow window showing Switchboard goes
   straight back to it when something other than the user opens a thread there.
 - `slideOutPanel` (boolean, default `true`): the side panel slides out of a window under 768px
-  (the window widens) instead of covering it, and an agent's file comes over to it.
+  (the window widens) instead of covering it, and the bar's Show opens an agent's file in it.
 - `threadLinksInSlide` (boolean, default `true`): thread links in the slide's chat open in the
   slide, with ← stepping back.
 - `commitButton` (boolean, default `true`): the Commit button at the top of the slide.
@@ -277,7 +281,11 @@ window.
   overlay sends a compact window (under 768px) back to Switchboard when it was showing the
   page within the last second and there was no pointerdown, keydown or focus in that window in
   the 1.5s before (`shouldStayOnSwitchboard` in `src/panes.ts`); the page reopens the slide's
-  chat if it comes back within 5s. Show goes to the thread. If the window stays on the thread
+  chat if it comes back within 5s, at the reading place: a capture-phase scroll listener on
+  `.sb-slide-body` keeps `pageState.scroll` (distance from the end), and on a restore the page
+  puts it back once the chat has drawn that far, holding it for 0.8s against bb's own
+  scroll-to-end and letting go on any wheel, touch, pointer or key. Show opens the thread in the
+  slide and its file beside it, or goes to the thread when there's no file. If the window stays on the thread
   instead, something counted as input; `stayOnSwitchboard` false turns this off.
 - The window didn't widen when the panel opened: only in bb's Mac app, only under 768px, and
   only on the Switchboard page. Turn on the debug log (above) and open the panel again; a window
