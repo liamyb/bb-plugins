@@ -1,16 +1,13 @@
 /*
- * Palette: brushed-silver chrome round dark navy panels, with light text to
- * read, green LCD type for the readouts and purple for whatever's selected.
- * It's the same in light and dark mode, so the one look holds whichever
- * mode a window is in. The --mx-* variables are the skin's own (chrome,
- * panels, LCD, selection); the rest are bb's tokens. color-scheme is dark so
- * the browser's own controls (date pickers, native scrollbars, form fields)
- * match it in light mode too.
+ * Palette: brushed-silver chrome with green LCD readouts and purple for
+ * whatever's selected, round panels you read. In light mode the panels are
+ * a soft off-white with dark text, which is easier to read for long; in
+ * dark mode they're dark navy with light text, as in the reference
+ * picture. The chrome, the LCDs and the selection are the same in both.
+ * The --mx-* variables are the skin's own; the rest are bb's tokens.
  */
 
 :root, .light, .dark {
-  color-scheme: dark;
-
   /* Skin: the chrome, brushed silver */
   --mx-chrome: #b9bec7;
   --mx-chrome-face: linear-gradient(180deg, #eef0f4 0%, #cfd3da 46%, #b3b9c3 54%, #c8cdd5 100%);
@@ -24,12 +21,6 @@
   --mx-chrome-edge: #23272f;
   --mx-chrome-text: #151920;
   --mx-chrome-text-dim: #464c57;
-
-  /* Skin: the panels set into it */
-  --mx-panel: #12151c;
-  --mx-panel-deep: #0c0e13;
-  --mx-panel-raised: #1c2029;
-  --mx-panel-line: #2c313c;
 
   /* Skin: LCD readouts */
   --mx-lcd: #05080a;
@@ -53,7 +44,117 @@
   /* Skin: type */
   --mx-font-lcd: "Mixtape VT", "VT323", ui-monospace, monospace;
   --mx-font-pixel: "Mixtape Pixel", "Silkscreen", ui-monospace, monospace;
-  --mx-font-body: Tahoma, Verdana, "Segoe UI", sans-serif;
+  /* Verdana for reading: wider and rounder than Tahoma, its late-90s sibling. */
+  --mx-font-body: Verdana, Tahoma, "Segoe UI", sans-serif;
+
+  --radius: 6px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-3xl: 14px;
+
+  --font-sans: var(--mx-font-body);
+  --font-mono: Menlo, Monaco, ui-monospace, monospace;
+  --font-terminal: Menlo, Monaco, ui-monospace, monospace;
+}
+
+:root, .light {
+  color-scheme: light;
+
+  /* Skin: the panels you read, soft off-white */
+  --mx-panel: #eef0f3;
+  --mx-panel-deep: #e6e9ee;
+  --mx-panel-raised: #ffffff;
+  --mx-panel-line: #c4c9d2;
+  --mx-panel-inset: inset 0 1px 2px rgb(0 0 0 / 0.16);
+  --mx-card-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+
+  /* Skin: LCD-coloured text printed on a panel (times, states) */
+  --mx-readout: #12763a;
+  --mx-readout-dim: #5d7a66;
+  --mx-readout-lit: #0b8a3a;
+  --mx-readout-amber: #a05f00;
+  --mx-readout-glow: none;
+
+  /* bb tokens */
+  --canvas: #f3f4f6;
+  --ink: #1b2130;
+  --primary: #12763a;
+  --primary-foreground: #ffffff;
+  --sidebar: var(--mx-panel-deep);
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: #d9dde4;
+  --sidebar-border: var(--mx-panel-line);
+  --surface-scrim: var(--mx-chrome);
+  --muted-foreground: color-mix(in oklch, var(--ink) 72%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 58%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --timeline-accent: #12763a;
+  --file-accent: #9a5200;
+  --destructive: #c4321f;
+  --destructive-text: #a8261b;
+  --warning: #c27a00;
+  --warning-text: #8a5300;
+  --attention: #d9a000;
+  --success: #12763a;
+  --diff-added: #12763a;
+  --diff-removed: #c4321f;
+  --pr-merged: #6a32d8;
+
+  --ansi-0: #1b2130;
+  --ansi-1: #b3261e;
+  --ansi-2: #12763a;
+  --ansi-3: #8a5a00;
+  --ansi-4: #1f4e9a;
+  --ansi-5: #6a32d8;
+  --ansi-6: #0f6e78;
+  --ansi-7: #d5d9e0;
+  --ansi-8: #5d6370;
+  --ansi-9: #d0402e;
+  --ansi-10: #1f9a4c;
+  --ansi-11: #a87000;
+  --ansi-12: #2f6bc4;
+  --ansi-13: #8a52e8;
+  --ansi-14: #1b8c96;
+  --ansi-15: #ffffff;
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #ffffff;
+  --ansi-bg-fg-2: #ffffff;
+  --ansi-bg-fg-3: #ffffff;
+  --ansi-bg-fg-4: #ffffff;
+  --ansi-bg-fg-5: #ffffff;
+  --ansi-bg-fg-6: #ffffff;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #ffffff;
+  --ansi-bg-fg-10: #ffffff;
+  --ansi-bg-fg-11: #ffffff;
+  --ansi-bg-fg-12: #ffffff;
+  --ansi-bg-fg-13: #ffffff;
+  --ansi-bg-fg-14: #ffffff;
+  --ansi-bg-fg-15: #000000;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Skin: the panels you read, dark navy */
+  --mx-panel: #12151c;
+  --mx-panel-deep: #0c0e13;
+  --mx-panel-raised: #1c2029;
+  --mx-panel-line: #2c313c;
+  --mx-panel-inset: inset 0 1px 3px rgb(0 0 0 / 0.6);
+  --mx-card-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 0 rgb(0 0 0 / 0.4);
+
+  /* Skin: LCD-coloured text printed on a panel (times, states) */
+  --mx-readout: var(--mx-lcd-ink);
+  --mx-readout-dim: var(--mx-lcd-dim);
+  --mx-readout-lit: var(--mx-lcd-lit);
+  --mx-readout-amber: var(--mx-led-amber);
+  --mx-readout-glow: var(--mx-lcd-glow);
 
   /* bb tokens */
   --canvas: #12151c;
@@ -79,19 +180,6 @@
   --diff-added: #4cf07c;
   --diff-removed: #ff6b5e;
   --pr-merged: #b996ff;
-
-  --radius: 6px;
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-2xl: 12px;
-  --radius-3xl: 14px;
-
-  --font-sans: var(--mx-font-body);
-  --font-mono: Menlo, Monaco, ui-monospace, monospace;
-  --font-terminal: Menlo, Monaco, ui-monospace, monospace;
 
   --ansi-0: #12151c;
   --ansi-1: #ff5a4a;

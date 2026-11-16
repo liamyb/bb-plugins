@@ -13,7 +13,7 @@ plain-English asks, and it's what I run every day.
 | [Theme Toggle](plugins/theme-toggle/) | One button in the sidebar footer, or Cmd+Option+T, switches bb between two themes: Sandbar and Mixtape unless you pick others |
 | [Status Strip](plugins/status-strip/) | A one-line readout above each thread's composer, like a player's display: how many threads are working, how much of this thread's context window is used (on an LED bar) and its branch. Click it for the working threads |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
-| [Mixtape theme](themes/mixtape/) | The same layout dressed as a late-90s media player: brushed-silver chrome and keys, dark panels, green LCD readouts and a level meter |
+| [Mixtape theme](themes/mixtape/) | The same layout dressed as a late-90s media player: brushed-silver chrome and keys, green LCD readouts and a level meter, with light reading panels in light mode and dark ones in dark mode |
 
 Built on bb 0.44 and running on 0.46, on a Mac.
 
@@ -109,9 +109,10 @@ bb theme set mixtape
 ```
 
 Mixtape is Sandbar's layout in an old media player's skin: brushed-silver bars and rail, raised
-silver keys in each pane's header, the thread list and chat in dark panels, pane titles as green
-LCD readouts, a purple bar for the open thread and a small level meter low on the rail. It looks
-the same in light and dark mode. It's built from Sandbar's file, so a layout fix there reaches it
+silver keys in each pane's header, the thread list and chat in panels set into the metal, pane
+titles as green LCD readouts, a purple bar for the open thread and a small level meter low on the
+rail. In light mode the panels are a soft off-white with dark text, which I find much easier to
+read; in dark mode they're dark navy. It's built from Sandbar's file, so a layout fix there reaches it
 with `node build.mjs`; the [Mixtape README](themes/mixtape/) explains how.
 
 ## Patches

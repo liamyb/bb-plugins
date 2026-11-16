@@ -1,13 +1,15 @@
 # Mixtape theme
 
 A late-90s desktop media player for bb. The bars and the rail are brushed silver, the buttons in
-each pane's header are raised silver keys, and everything you read sits in dark panels set into
-the metal. Pane titles are green LCD readouts, lit in the pane you're in. The thread list has white
+each pane's header are raised silver keys, and everything you read sits in panels set into the
+metal. Pane titles are green LCD readouts, lit in the pane you're in. The thread list has bold
 titles with green LCD times, and the open thread is a purple bar. A small green, amber and red level
 meter sits low on the rail. It's an original look, not a copy of any player's skin.
 
-It looks the same in light and dark mode. Code and diffs use bb's dark code colours in both, from
-`theme.json`.
+In light mode the panels you read are a soft off-white with dark text, which is easier on the eyes
+for long sessions; in dark mode they're dark navy with light text. The chrome, the LCD readouts and
+the purple selection are the same in both, and `theme.json` gives code and diffs bb's matching
+light or dark colours.
 
 With the [Status Strip](../../plugins/status-strip/) plugin, each thread's composer gets an LCD
 readout above it: how many threads are working, this thread's context used as an LED bar, and its
@@ -69,4 +71,4 @@ bb theme set mixtape
 [VT323](https://fonts.google.com/specimen/VT323) for the LCD readouts and
 [Silkscreen](https://fonts.google.com/specimen/Silkscreen) for the name stamped on the rail, embedded
 in the CSS so the theme works offline. Both are under the SIL Open Font License 1.1; the licence text and
-copyright notices are in `fonts/`. The body text is Tahoma, which every Mac has.
+copyright notices are in `fonts/`. The text you read is Verdana, which comes with macOS.
