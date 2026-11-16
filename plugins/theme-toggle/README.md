@@ -1,8 +1,8 @@
 # Theme Toggle
 
 One button to switch bb between two themes. It's a palette in the sidebar footer, and
-Cmd+Option+T does the same, from anywhere in bb. It's in the command palette too, as "Theme
-Toggle: switch to the other theme".
+Cmd+Option+T does the same. It's in the command palette too, as "Theme Toggle: switch to the
+other theme".
 
 By default it switches between [Sandbar](../../themes/sandbar/) and
 [Mixtape](../../themes/mixtape/). From Mixtape it goes back to Sandbar; from Sandbar, or any other
