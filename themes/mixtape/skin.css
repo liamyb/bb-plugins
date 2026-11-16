@@ -1,0 +1,518 @@
+/*
+ * The skin. Everything above this line is Sandbar's layout, copied in by
+ * build.mjs; everything below draws the retro look on top of it: brushed
+ * silver chrome for the bars and the rail, raised silver keys for the pane
+ * buttons, dark panels for the list, the chat and the composer, green LCD
+ * readouts for titles and times, and purple for what's selected. It only
+ * restyles; nothing here moves or resizes anything Sandbar's layout places.
+ */
+
+::selection {
+  background: var(--mx-select-bg);
+  color: var(--mx-select-ink);
+  text-shadow: none;
+}
+
+/*
+ * Bevels. A key is raised: light top-left, dark bottom-right, a dark edge
+ * and a small drop shadow. Pressed, it sinks. A well is a dark display set
+ * into the metal, with the light catching its lower lip.
+ */
+:root {
+  --mx-bevel-up: inset 1px 1px 0 var(--mx-chrome-hi), inset -1px -1px 0 var(--mx-chrome-lo);
+  --mx-key: inset 1px 1px 0 var(--mx-chrome-hi), inset -1px -1px 0 var(--mx-chrome-lo), 0 0 0 1px var(--mx-chrome-edge), 0 1px 2px rgb(0 0 0 / 0.35);
+  --mx-key-down: inset 0 1px 3px rgb(0 0 0 / 0.45), 0 0 0 1px var(--mx-chrome-edge);
+  --mx-well: inset 0 1px 3px rgb(0 0 0 / 0.75), 0 0 0 1px var(--mx-chrome-edge), 0 1px 0 1px rgb(255 255 255 / 0.55);
+  --mx-sheen-x: linear-gradient(90deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0) 45%, rgb(0 0 0 / 0.10));
+}
+
+/* Scrollbars: a rounded silver thumb in a dark track. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--mx-panel-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mx-chrome-face);
+  border: 2px solid var(--mx-panel-deep);
+  border-radius: 6px;
+  box-shadow: var(--mx-bevel-up);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(rgb(255 255 255 / 0.25), rgb(255 255 255 / 0.25)), var(--mx-chrome-face);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--mx-panel-deep);
+}
+
+/* ---------------------------------------------------------------- Rail */
+
+[data-testid="sidebar-navigation-rail"],
+[data-testid="app-nav-rail"],
+.dark [data-testid="sidebar-navigation-rail"],
+.dark [data-testid="app-nav-rail"] {
+  background: var(--mx-brush), var(--mx-sheen-x), var(--mx-chrome);
+  color: var(--mx-chrome-text);
+}
+
+[data-testid="sidebar-navigation-rail"] {
+  box-shadow: var(--mx-bevel-up);
+  border-right: 1px solid var(--mx-chrome-edge);
+}
+
+/*
+ * A level meter and the maker's mark, low on the rail where a player keeps
+ * its badge: five green, amber and red LED bars in a dark well, with the
+ * name stamped into the metal above. Decoration only, drawn over nothing and
+ * taking no clicks. Windows under 720px tall leave them off so they never
+ * meet the icons.
+ */
+@media (min-height: 720px) {
+  [data-testid="app-nav-rail"] {
+    position: relative;
+
+    &::before {
+      content: "MIXTAPE";
+      position: absolute;
+      bottom: calc(1rem + 74px);
+      left: 50%;
+      translate: -50% 0;
+      writing-mode: vertical-rl;
+      rotate: 180deg;
+      font-family: var(--mx-font-pixel);
+      font-size: 9px;
+      letter-spacing: 0.32em;
+      color: var(--mx-chrome);
+      text-shadow: 1px 1px 0 var(--mx-chrome-hi), -1px -1px 0 var(--mx-chrome-lo);
+      pointer-events: none;
+    }
+
+    /*
+     * The bars are made by covering a green-to-red column with the display
+     * colour everywhere a bar isn't: a strip above each bar (its height sets
+     * the bar's), the gaps between them, and thin lines to split each bar
+     * into LED segments. To change a bar, change its cover's height.
+     */
+    &::after {
+      content: "";
+      position: absolute;
+      bottom: 1rem;
+      left: 50%;
+      translate: -50% 0;
+      width: 38px;
+      height: 64px;
+      border-radius: 4px;
+      box-shadow: var(--mx-well);
+      background:
+        repeating-linear-gradient(to top, transparent 0 3px, rgb(0 0 0 / 0.85) 3px 4px),
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 0 0 / 100% 4px no-repeat,
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 0 100% / 100% 3px no-repeat,
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 3px 0 / 4px 52% no-repeat,
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 10px 0 / 4px 20% no-repeat,
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 17px 0 / 4px 38% no-repeat,
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 24px 0 / 4px 10% no-repeat,
+        linear-gradient(var(--mx-lcd), var(--mx-lcd)) 31px 0 / 4px 64% no-repeat,
+        repeating-linear-gradient(90deg, var(--mx-lcd) 0 3px, transparent 3px 7px),
+        linear-gradient(to top, var(--mx-led-green) 0 55%, var(--mx-led-amber) 55% 78%, var(--mx-led-red) 78% 100%);
+      pointer-events: none;
+    }
+  }
+}
+
+/*
+ * The meter moves while agents work. The Status Strip plugin marks the page
+ * with data-agents-running while any thread is working, and the bars then
+ * step through levels about five times a second; with nothing running, or
+ * without the plugin, they rest. Off whenever macOS has Reduce motion on.
+ * Each step redraws only the meter's 38 by 64 pixels.
+ */
+@media (min-height: 720px) and (prefers-reduced-motion: no-preference) {
+  html[data-agents-running] [data-testid="app-nav-rail"]::after {
+    animation: mx-meter 1.6s steps(1, end) infinite;
+  }
+}
+
+@keyframes mx-meter {
+  0%, 100% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 52%, 4px 20%, 4px 38%, 4px 10%, 4px 64%, 100% 100%, 100% 100%; }
+  12.5% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 30%, 4px 45%, 4px 15%, 4px 35%, 4px 50%, 100% 100%, 100% 100%; }
+  25% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 60%, 4px 25%, 4px 45%, 4px 20%, 4px 30%, 100% 100%, 100% 100%; }
+  37.5% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 40%, 4px 10%, 4px 30%, 4px 55%, 4px 70%, 100% 100%, 100% 100%; }
+  50% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 20%, 4px 35%, 4px 60%, 4px 25%, 4px 45%, 100% 100%, 100% 100%; }
+  62.5% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 55%, 4px 15%, 4px 25%, 4px 40%, 4px 60%, 100% 100%, 100% 100%; }
+  75% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 35%, 4px 50%, 4px 20%, 4px 15%, 4px 38%, 100% 100%, 100% 100%; }
+  87.5% { background-size: 100% 100%, 100% 4px, 100% 3px, 4px 65%, 4px 30%, 4px 40%, 4px 30%, 4px 25%, 100% 100%, 100% 100%; }
+}
+
+/*
+ * The rail's foot, where the settings gear sits, is the sidebar's own
+ * surface. In the Mac app that shows the window's background, so the
+ * sidebar itself is silver and the list paints its own panel.
+ */
+[data-sidebar="sidebar"] {
+  background: var(--mx-brush), var(--mx-sheen-x), var(--mx-chrome);
+}
+
+/*
+ * On the phone the strip under the notch is the page's top padding. It's
+ * silver, so the header looks like it runs to the top of the screen. The
+ * inset is 0 everywhere else, so this draws nothing on a computer.
+ */
+[data-testid="app-layout-content-shell"] {
+  background: linear-gradient(var(--mx-chrome), var(--mx-chrome)) top / 100% env(safe-area-inset-top, 0px) no-repeat;
+}
+
+/* --------------------------------------------- Sidebar: top row, footer */
+
+[data-testid="app-sidebar-top-reserve-row"],
+[data-testid="sidebar-footer-body"] {
+  background: var(--mx-brush), var(--mx-chrome-sheen), var(--mx-chrome);
+  color: var(--mx-chrome-text);
+}
+
+[data-testid="app-sidebar-top-reserve-row"] {
+  box-shadow: inset 0 -1px 0 var(--mx-chrome-edge);
+}
+
+[data-testid="sidebar-footer-body"] {
+  box-shadow: inset 0 1px 0 var(--mx-chrome-edge), inset 0 2px 0 var(--mx-chrome-hi);
+}
+
+/* "New thread" as a bold label on the metal. */
+[data-testid="app-sidebar-top-reserve-row"] button span {
+  font-weight: 700;
+}
+
+/* ------------------------------------------ Chrome buttons (bars, rail) */
+
+/* On the metal, buttons are dark and rise into keys under the pointer. */
+:is(
+  header:has(> [data-testid="app-page-header-content-row"]),
+  [data-testid="app-nav-rail"],
+  [data-testid="sidebar-navigation-rail"],
+  [data-testid="app-sidebar-top-reserve-row"],
+  [data-testid="sidebar-footer-body"],
+  [data-testid="app-window-title-bar"],
+  [data-testid="app-sidebar-trigger-overlay"],
+  [data-testid="split-workspace-panel-toggle"]
+) :is(button, a[data-sidebar="menu-button"]):not([data-pane-family-label]),
+[data-sidebar="sidebar"] button[aria-label^="Settings"] {
+  color: var(--mx-chrome-text);
+  border-radius: 6px;
+
+  &:hover {
+    background: var(--mx-chrome-face);
+    box-shadow: var(--mx-key);
+    color: var(--mx-chrome-text);
+  }
+
+  /* The page you're on, or a toggle that's on, lights up as a display. */
+  &:is([aria-pressed="true"], [aria-current="page"], [data-state="open"], [aria-expanded="true"], :active) {
+    background: var(--mx-lcd);
+    box-shadow: var(--mx-well);
+    color: var(--mx-lcd-ink);
+    filter: drop-shadow(var(--mx-lcd-glow-icon));
+  }
+}
+
+/* The update badges in the footer: dark type on the metal. */
+[data-testid^="sidebar-updates-badge"] {
+  border-color: var(--mx-chrome-lo);
+  color: var(--mx-chrome-text);
+
+  svg {
+    color: var(--mx-chrome-text-dim);
+  }
+
+  &:hover {
+    background: var(--mx-chrome-face);
+  }
+}
+
+/*
+ * Anything else in a header's right-hand group (Switchboard's usage gauge,
+ * labels, counts) sits on the metal, so bb's text colours turn dark there.
+ * Plugins that draw from bb's variables follow without knowing.
+ */
+header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page-header-content-row"] > div:last-child:not(:first-child) {
+  --foreground: var(--mx-chrome-text);
+  --muted-foreground: var(--mx-chrome-text-dim);
+  --subtle-foreground: var(--mx-chrome-text-dim);
+  --primary: #0f6b2a;
+  --success: #0f6b2a;
+  --warning: #8a5a00;
+  --destructive: #a8261b;
+  color: var(--mx-chrome-text);
+}
+
+/*
+ * In a pane's header the buttons on the right are keys all the time, like
+ * a player's row of transport buttons, and press in rather than light up.
+ */
+header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page-header-content-row"] > div:last-child:not(:first-child) button:not([data-pane-family-label]) {
+  background: var(--mx-chrome-face);
+  box-shadow: var(--mx-key);
+
+  &:hover {
+    background: linear-gradient(rgb(255 255 255 / 0.3), rgb(255 255 255 / 0.3)), var(--mx-chrome-face);
+  }
+
+  &:is([aria-pressed="true"], [data-state="open"], [aria-expanded="true"], :active) {
+    background: var(--mx-chrome-face-down);
+    box-shadow: var(--mx-key-down);
+    color: var(--mx-chrome-text);
+    filter: none;
+  }
+}
+
+/* ------------------------------------------------- Pane and page headers */
+
+/*
+ * Brushed metal. The colour stays bb's own (--surface-scrim), so Pane
+ * Attention's tint still shows through, and Pane Families' bar and tint
+ * (inset shadows) sit on top.
+ */
+header:has(> [data-testid="app-page-header-content-row"]) {
+  background-image: var(--mx-brush), var(--mx-chrome-sheen);
+  border-bottom-color: var(--mx-chrome-edge);
+  color: var(--mx-chrome-text);
+}
+
+/*
+ * The title is a green LCD readout set into the metal, like a track name.
+ * It's lit, except in a split pane that isn't focused, where the backlight
+ * is off.
+ */
+[data-testid="app-page-header-content-row"] > div:first-child > div:first-child > div:first-child {
+  margin-block: 0;
+  padding: 4px 10px 3px;
+  border-radius: 6px;
+  background: var(--mx-lcd);
+  box-shadow: var(--mx-well);
+  color: var(--mx-lcd-lit);
+  text-shadow: var(--mx-lcd-glow);
+  font-family: var(--mx-font-lcd);
+  font-size: 19px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+
+  > p {
+    font-size: inherit;
+    line-height: 1.05;
+    color: inherit;
+  }
+}
+
+[data-focused="false"] [data-testid="app-page-header-content-row"] > div:first-child > div:first-child > div:first-child {
+  color: var(--mx-lcd-dim);
+  text-shadow: none;
+}
+
+/*
+ * Pane families: the "↳ parent" label sits on the metal, so it takes a
+ * dark shade of the family's colour in both modes.
+ */
+[data-pane-family] {
+  --bb-pane-family-text: oklch(0.40 0.15 var(--bb-pane-family-hue));
+}
+
+[data-pane-family-label] {
+  font-weight: 700;
+}
+
+/* ------------------------------------------------- Thread list (sidebar) */
+
+/* The list is a dark panel set into the silver. */
+[data-testid="app-sidebar-body"] {
+  background: var(--mx-panel-deep);
+  box-shadow: inset 2px 0 3px rgb(0 0 0 / 0.45), inset -1px 0 0 rgb(255 255 255 / 0.04);
+}
+
+[data-sidebar="panel"] li > div:has(> a[data-sidebar-thread-id]) {
+  border-radius: 6px;
+  color: var(--ink);
+
+  > div:first-of-type {
+    font-weight: 700;
+    color: inherit;
+  }
+
+  /* The time since a thread last moved, as a green LCD readout. */
+  .tabular-nums {
+    font-family: var(--mx-font-lcd);
+    font-size: 17px;
+    color: var(--mx-lcd-ink);
+    text-shadow: var(--mx-lcd-glow);
+  }
+}
+
+/* The open thread: a purple bar with a glow, white type. */
+[data-sidebar="panel"] li > div[class~="bg-sidebar-accent"]:has(> a[data-sidebar-thread-id]) {
+  background: var(--mx-select-face);
+  box-shadow: var(--mx-select-ring);
+  color: var(--mx-select-ink);
+
+  .text-muted-foreground,
+  .text-2xs,
+  .text-foreground,
+  .tabular-nums {
+    color: rgb(255 255 255 / 0.85);
+    text-shadow: none;
+  }
+}
+
+/* Section headings ("Pinned", "Inbox") in small bold capitals. */
+[data-sidebar="panel"] section > h2 > span:first-child {
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* --------------------------------------------------------- The timeline */
+
+/* Your messages: a raised slate card. */
+[data-message-column] [class~="bg-surface-recessed"] {
+  border-color: var(--mx-panel-line);
+  background-color: var(--mx-panel-raised);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 0 rgb(0 0 0 / 0.4);
+}
+
+/* ---------------------------------------------------------- The composer */
+
+/* A dark display in a silver frame. */
+form[data-promptbox] {
+  border: 1px solid var(--mx-chrome-edge);
+  border-radius: 10px;
+  background: var(--mx-panel-deep);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.6), 0 0 0 3px var(--mx-chrome), 0 0 0 4px var(--mx-chrome-edge);
+}
+
+form[data-promptbox] :is(textarea, [contenteditable="true"]) {
+  caret-color: var(--primary);
+}
+
+/* The changed-files bar above it is a strip of metal. */
+[data-promptbox-shell] section[aria-label="Thread context before sending"] {
+  border-color: var(--mx-chrome-edge);
+  background: var(--mx-brush), var(--mx-chrome-face);
+  box-shadow: var(--mx-bevel-up);
+  color: var(--mx-chrome-text);
+
+  .text-muted-foreground {
+    color: var(--mx-chrome-text-dim);
+  }
+
+  .text-diff-added {
+    color: #11702c;
+  }
+
+  .text-diff-removed {
+    color: #a8261b;
+  }
+}
+
+/* ----------------------------------------------- Menus, popovers, tips */
+
+[data-radix-popper-content-wrapper] > [role="menu"],
+[data-radix-popper-content-wrapper] > [role="dialog"],
+[data-radix-popper-content-wrapper] > [role="listbox"] {
+  border: 1px solid var(--mx-chrome-lo);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+[role="tooltip"],
+[data-radix-popper-content-wrapper] > [data-side][data-state$="open"]:not([role]) {
+  font-family: var(--mx-font-lcd);
+  font-size: 16px;
+}
+
+/* -------------------------------------------------------------- Plugins */
+
+/*
+ * Aura paints a wallpaper behind each panel. Mixtape keeps the panels dark,
+ * so the wallpaper is hidden while this theme is on; switch back to Sandbar
+ * and it returns. Aura itself is untouched.
+ */
+.aura-capy-layer {
+  display: none !important;
+}
+
+/*
+ * Status Strip: Mixtape asks for the plugin's readout above each thread's
+ * composer, which sits as an LCD in the silver context row. VT323 is drawn
+ * small, so the strip's type is set larger.
+ */
+:root {
+  --status-strip: on;
+  --status-strip-font-size: 17px;
+}
+
+/* Its list of working threads opens below it as a dark panel in the metal. */
+.bss-details {
+  margin: 0 4px 4px;
+  border-radius: 6px;
+  background: var(--mx-panel-deep);
+  box-shadow: var(--mx-well);
+  color: var(--ink);
+}
+
+.bss-details-head {
+  color: var(--mx-lcd-dim);
+}
+
+/*
+ * Switchboard: its rows take the thread list's look. Titles bold and white,
+ * states and times as LCD readouts (dim for done-with, lit for replies,
+ * amber when something's asking you), and the open chat a purple bar.
+ */
+.sb-page .sb-title {
+  font-weight: 700;
+}
+
+.sb-page :is(.sb-state, .sb-ask-time) {
+  font-family: var(--mx-font-lcd);
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--mx-lcd-dim);
+}
+
+.sb-page .sb-ask-time,
+.sb-page .sb-state:is([data-state="working"], [data-status="working"]) {
+  color: var(--mx-lcd-ink);
+  text-shadow: var(--mx-lcd-glow);
+}
+
+.sb-page .sb-state:is([data-state="done"], [data-status="reply"]) {
+  color: var(--mx-lcd-lit);
+  text-shadow: var(--mx-lcd-glow);
+}
+
+.sb-page .sb-state:is([data-state="needs-you"], [data-status="asking"]) {
+  color: var(--mx-led-amber);
+  text-shadow: 0 0 3px rgb(255 210 61 / 0.55);
+}
+
+.sb-page .sb-row[data-selected] {
+  background: var(--mx-select-face);
+  box-shadow: var(--mx-select-ring);
+  color: var(--mx-select-ink);
+
+  :is(.sb-title, .sb-state, .sb-hint, .sb-line) {
+    color: var(--mx-select-ink);
+    text-shadow: none;
+  }
+}
+
+.sb-page .sb-group-head {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+

@@ -1,0 +1,128 @@
+/*
+ * Palette: brushed-silver chrome round dark navy panels, with light text to
+ * read, green LCD type for the readouts and purple for whatever's selected.
+ * It's the same in light and dark mode, so the one look holds whichever
+ * mode a window is in. The --mx-* variables are the skin's own (chrome,
+ * panels, LCD, selection); the rest are bb's tokens. color-scheme is dark so
+ * the browser's own controls (date pickers, native scrollbars, form fields)
+ * match it in light mode too.
+ */
+
+:root, .light, .dark {
+  color-scheme: dark;
+
+  /* Skin: the chrome, brushed silver */
+  --mx-chrome: #b9bec7;
+  --mx-chrome-face: linear-gradient(180deg, #eef0f4 0%, #cfd3da 46%, #b3b9c3 54%, #c8cdd5 100%);
+  --mx-chrome-face-down: linear-gradient(180deg, #a3a9b4 0%, #b9bec7 50%, #c9cdd4 100%);
+  --mx-chrome-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.65) 0, rgb(255 255 255 / 0.18) 1px, rgb(255 255 255 / 0.10) 42%, rgb(0 0 0 / 0.05) 58%, rgb(0 0 0 / 0.16) 100%);
+  --mx-brush:
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 0.10) 0 1px, rgb(0 0 0 / 0.035) 1px 2px),
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 0.05) 0 3px, rgb(0 0 0 / 0.03) 3px 7px);
+  --mx-chrome-hi: #fbfcfe;
+  --mx-chrome-lo: #6d7380;
+  --mx-chrome-edge: #23272f;
+  --mx-chrome-text: #151920;
+  --mx-chrome-text-dim: #464c57;
+
+  /* Skin: the panels set into it */
+  --mx-panel: #12151c;
+  --mx-panel-deep: #0c0e13;
+  --mx-panel-raised: #1c2029;
+  --mx-panel-line: #2c313c;
+
+  /* Skin: LCD readouts */
+  --mx-lcd: #05080a;
+  --mx-lcd-ink: #4cf07c;
+  --mx-lcd-dim: #2e9a50;
+  --mx-lcd-lit: #7dffa0;
+  --mx-lcd-glow: 0 0 3px rgb(76 240 124 / 0.55), 0 0 9px rgb(76 240 124 / 0.18);
+  --mx-lcd-glow-icon: 0 0 2px rgb(76 240 124 / 0.6);
+
+  /* Skin: selection, purple */
+  --mx-select-face: linear-gradient(180deg, #9257ff 0%, #6f33e6 52%, #5a24c8 100%);
+  --mx-select-bg: #6f33e6;
+  --mx-select-ink: #ffffff;
+  --mx-select-ring: 0 0 0 1px #b996ff, 0 0 12px rgb(146 87 255 / 0.5);
+
+  /* Skin: the meter's colours */
+  --mx-led-green: #3ddc5a;
+  --mx-led-amber: #ffd23d;
+  --mx-led-red: #ff4d3d;
+
+  /* Skin: type */
+  --mx-font-lcd: "Mixtape VT", "VT323", ui-monospace, monospace;
+  --mx-font-pixel: "Mixtape Pixel", "Silkscreen", ui-monospace, monospace;
+  --mx-font-body: Tahoma, Verdana, "Segoe UI", sans-serif;
+
+  /* bb tokens */
+  --canvas: #12151c;
+  --ink: #e6e9ef;
+  --primary: #4cf07c;
+  --primary-foreground: #04110a;
+  --sidebar: var(--mx-panel-deep);
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: #1d222c;
+  --sidebar-border: var(--mx-panel-line);
+  --surface-scrim: var(--mx-chrome);
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 56%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 62%, var(--canvas));
+  --timeline-accent: #4cf07c;
+  --file-accent: #ffcf5a;
+  --destructive: #e8402f;
+  --destructive-text: #ff8070;
+  --warning: #ffc23d;
+  --warning-text: #ffd36a;
+  --attention: #ffd23d;
+  --success: #4cf07c;
+  --diff-added: #4cf07c;
+  --diff-removed: #ff6b5e;
+  --pr-merged: #b996ff;
+
+  --radius: 6px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-3xl: 14px;
+
+  --font-sans: var(--mx-font-body);
+  --font-mono: Menlo, Monaco, ui-monospace, monospace;
+  --font-terminal: Menlo, Monaco, ui-monospace, monospace;
+
+  --ansi-0: #12151c;
+  --ansi-1: #ff5a4a;
+  --ansi-2: #4cf07c;
+  --ansi-3: #ffd23d;
+  --ansi-4: #5aa9ff;
+  --ansi-5: #b996ff;
+  --ansi-6: #4de3f0;
+  --ansi-7: #c9ced8;
+  --ansi-8: #5d6370;
+  --ansi-9: #ff8070;
+  --ansi-10: #8dffaa;
+  --ansi-11: #ffe27a;
+  --ansi-12: #8cc8ff;
+  --ansi-13: #d6c0ff;
+  --ansi-14: #8ff3ff;
+  --ansi-15: #f4f6fa;
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #000000;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
