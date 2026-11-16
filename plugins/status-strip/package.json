@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-status-strip",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A one-line readout above each thread's composer: threads working, context used, branch.",
+  "license": "MIT",
+  "engines": {
+    "bb": ">=0.48",
+    "bbPluginSdk": ">=0.6.104"
+  },
+  "bb": {
+    "name": "Status Strip",
+    "description": "A one-line readout above each thread's composer, like a player's display: how many threads are working across bb, how much of this thread's context window is used (with an LED bar), and its branch. Click it for the working threads, each one click from opening beside you. It shows in themes that ask for it, such as Mixtape, or everywhere with a setting. While anything works it marks the page, so a theme can react.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.104",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

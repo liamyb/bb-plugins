@@ -22,6 +22,10 @@
     {
       "name": "theme-toggle",
       "source": "./plugins/theme-toggle"
+    },
+    {
+      "name": "status-strip",
+      "source": "./plugins/status-strip"
     }
   ]
 }
