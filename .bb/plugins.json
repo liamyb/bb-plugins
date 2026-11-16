@@ -18,6 +18,10 @@
     {
       "name": "switchboard",
       "source": "./plugins/switchboard"
+    },
+    {
+      "name": "theme-toggle",
+      "source": "./plugins/theme-toggle"
     }
   ]
 }

@@ -1,0 +1,33 @@
+{
+  "name": "bb-plugin-theme-toggle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Switches bb between two themes with one click or Cmd+Option+T.",
+  "license": "MIT",
+  "engines": {
+    "bb": ">=0.48",
+    "bbPluginSdk": ">=0.6.104"
+  },
+  "bb": {
+    "name": "Theme Toggle",
+    "description": "A button in the sidebar footer, and Cmd+Option+T, that switch bb between two themes: Sandbar and Mixtape by default. Set the two theme ids in the plugin's settings.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.104",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "^5.7.0"
+  }
+}
