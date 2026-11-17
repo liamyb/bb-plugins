@@ -1,6 +1,6 @@
 # bb plugins and two themes
 
-Six small [bb](https://getbb.app) plugins and two themes, built for working in lots of split panes,
+Seven small [bb](https://getbb.app) plugins and two themes, built for working in lots of split panes,
 mostly on a laptop screen. I'm not an engineer: all of it was written by Claude in bb threads, from
 plain-English asks, and it's what I run every day.
 
@@ -12,6 +12,7 @@ plain-English asks, and it's what I run every day.
 | [Switchboard](plugins/switchboard/) | A compact page listing the chats open in your panes, in any bb window, with a state word each. Click one and bb's chat slides open in place. Made for a small second window (Cmd+Shift+N); Cmd+Shift+S opens it |
 | [Theme Toggle](plugins/theme-toggle/) | One button in the sidebar footer, or Cmd+Option+T, switches bb between two themes: Sandbar and Mixtape unless you pick others |
 | [Status Strip](plugins/status-strip/) | A one-line readout above each thread's composer, like a player's display: how many threads are working, how much of this thread's context window is used (on an LED bar) and its branch. Click it for the working threads |
+| [Orbit](plugins/orbit/) | A live map of every thread across bb. Today's front desk sits in the middle, each section is a system round its pinned hub, and child threads sit beside their parents. A working thread glows, each tool call sends out a ripple with the tool's name, and a hand-off between threads flies across as a comet. It draws bb's own state and starts no agent turns |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
 | [Mixtape theme](themes/mixtape/) | The same layout dressed as a late-90s media player: brushed-silver chrome and keys, green LCD readouts and a level meter, with light reading panels in light mode and dark ones in dark mode |
 
@@ -28,6 +29,7 @@ bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.3.0 --plugin p
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin switchboard --tag-prefix switchboard/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin theme-toggle --tag-prefix theme-toggle/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin status-strip --tag-prefix status-strip/
+bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin orbit --tag-prefix orbit/
 ```
 
 **Message Times** works on its own, with any theme.
@@ -43,6 +45,11 @@ settings, so it can switch between any pair.
 **Status Strip** only shows in themes that ask for it, which Mixtape does. A setting shows it in
 every theme. While anything is working it also marks the page, which is what makes Mixtape's
 level meter move.
+
+**Orbit** works on its own, with any theme, and needs bb 0.49 or later. The middle of its map is
+the pinned thread of a section called Front desk, and its dotted lines come from the ledger file
+my front desk keeps. Both are settings, and without them the map still draws, with nothing in the
+middle. The [Orbit README](plugins/orbit/) says what everything on it means.
 
 **Pane Attention draws nothing by itself.** It only sets attributes on the panes, and the theme
 does the drawing. Use the Sandbar theme below, or copy its "Pane attention" and "Sliding panes"

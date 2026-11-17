@@ -1,0 +1,35 @@
+{
+  "name": "bb-plugin-orbit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A live map of every bb thread at work: sections as systems round the front desk, pulses for tool calls, comets for hand-offs.",
+  "license": "MIT",
+  "engines": {
+    "bb": ">=0.49",
+    "bbPluginSdk": ">=0.6.132"
+  },
+  "bb": {
+    "name": "Orbit",
+    "description": "A live map of every thread across bb. Today's front desk sits in the middle, each section is a system round it with its pinned hub as the anchor, and child threads circle their parents. A thread that's working glows, each tool call sends out a ripple with the tool's name, a hand-off between threads flies across as a comet, and a thread asking you pings amber. Beside the map: what each working thread is doing now, with its model and context used, a feed of tool calls and hand-offs, and tool calls a minute over the last hour. Click a thread to open it, Cmd-click for a split. It reads bb's own thread list and event log, only while the page is showing, and starts no agent turns.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.132",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -26,6 +26,10 @@
     {
       "name": "status-strip",
       "source": "./plugins/status-strip"
+    },
+    {
+      "name": "orbit",
+      "source": "./plugins/orbit"
     }
   ]
 }
