@@ -10,6 +10,8 @@ import {
   chainCheck,
   chainWanted,
   hasUnread,
+  holdThread,
+  holdsOnOpen,
   judge,
   judgedOrigins,
   ledgerFileName,
@@ -20,6 +22,8 @@ import {
   parseSeen,
   parseTurnEvents,
   relayCheck,
+  releasedHolds,
+  repliedSince,
   sectionIdsFor,
   segmentTurns,
   stepPanes,
@@ -28,6 +32,7 @@ import {
   turnsWanted,
   unreadTurns,
   unreadVerdict,
+  withoutHolds,
   type DeskFacts,
   type RelayCheck,
   type TurnSegment,
@@ -133,9 +138,10 @@ test("events cut into turns, and a cut-off oldest turn is dropped", () => {
   ]);
   const all = segmentTurns(events, true);
   assert.deepEqual(all, [
-    { ...running(you), startedAt: 100 },
-    // A hand-off's request carries when it arrived; a turn, when its first request came.
-    { ...done(90, { ...fromThread("thr_a"), at: 80 }, you), startedAt: 70 },
+    { ...running(you), startedAt: 100, youAt: 100 },
+    // A hand-off's request carries when it arrived; a turn, when its first
+    // request came, and when you last sent something in it.
+    { ...done(90, { ...fromThread("thr_a"), at: 80 }, you), startedAt: 70, youAt: 70 },
     done(60),
   ]);
   // Read to the limit: the oldest turn may be missing its requests.
@@ -414,18 +420,20 @@ test("the tally and the rail badge count Asking you and Replies", () => {
     }),
   );
   const counts = tally(rows);
-  assert.deepEqual(counts, { asking: 1, replies: 1, fyi: 1, working: 1 });
+  assert.deepEqual(counts, { asking: 1, replies: 1, held: 0, fyi: 1, working: 1 });
   assert.deepEqual(badgeFor(counts), {
     count: 2,
     tone: "warning",
     label: "Switchboard: 1 thread asking you, 1 reply",
   });
-  assert.deepEqual(badgeFor({ asking: 0, replies: 3, fyi: 2, working: 1 }), {
+  assert.deepEqual(badgeFor({ asking: 0, replies: 3, held: 0, fyi: 2, working: 1 }), {
     count: 3,
     tone: "neutral",
     label: "Switchboard: 3 replies",
   });
-  assert.equal(badgeFor({ asking: 0, replies: 0, fyi: 4, working: 2 }), null);
+  assert.equal(badgeFor({ asking: 0, replies: 0, held: 0, fyi: 4, working: 2 }), null);
+  // Still with you isn't counted: you've seen those.
+  assert.equal(badgeFor({ asking: 0, replies: 0, held: 5, fyi: 0, working: 0 }), null);
 });
 
 test("panes that finish while unwatched are flagged, and a window you've left watches nothing", () => {
@@ -572,4 +580,102 @@ test("children, hidden and archived threads are never the desk", () => {
 test("no desk when the setting is empty or the section is empty", () => {
   assert.equal(findDesk([desk("thr_a")], SECTIONS, ""), null);
   assert.equal(findDesk([desk("thr_a")], SECTIONS, "bb tooling"), null);
+});
+
+test("opening a reply holds it, and so does a failed turn, but not a question, FYI or Working", () => {
+  assert.equal(holdsOnOpen("reply", null), true);
+  assert.equal(holdsOnOpen("asking", "failed"), true);
+  assert.equal(holdsOnOpen("asking", "queued-failed"), true);
+  assert.equal(holdsOnOpen("asking", "question"), false);
+  assert.equal(holdsOnOpen("fyi", null), false);
+  assert.equal(holdsOnOpen("working", null), false);
+  assert.equal(holdsOnOpen("held", null), false);
+  assert.equal(holdsOnOpen(null, null), false);
+});
+
+test("a hold keeps when you first opened it", () => {
+  const held = holdThread({}, "thr_a", 5_000);
+  assert.deepEqual(held, { thr_a: 5_000 });
+  assert.deepEqual(holdThread(held, "thr_a", 9_000), { thr_a: 5_000 });
+  assert.deepEqual(holdThread(held, "thr_b", 9_000), { thr_a: 5_000, thr_b: 9_000 });
+  assert.deepEqual(withoutHolds({ thr_a: 1, thr_b: 2 }, ["thr_a", "thr_c"]), { thr_b: 2 });
+});
+
+test("the 11 Nov case: the first thread stays in Still with you once you've opened another", () => {
+  const held = { a: 1_500 };
+  // You opened a from Replies, so it's read now; then you opened b.
+  const threads = [thread("a", { lastReadAt: 1_500 }), thread("b", { latestAttentionAt: 2_000 })];
+  const turns = new Map([["a", [running(), done(1_000, you)]]]);
+  const rows = buildWaiting(input(threads, { turns, held, keep: { id: "b", group: "reply" } }));
+  assert.deepEqual(groups(rows), ["reply:b", "held:a"]);
+  // Without the hold, a is gone: what happened before.
+  assert.deepEqual(groups(buildWaiting(input(threads, { turns, keep: { id: "b", group: "reply" } }))), ["reply:b"]);
+});
+
+test("a held thread shows in Replies while it's open, and wherever it is when there's more", () => {
+  const held = { a: 1_500 };
+  const read = thread("a", { lastReadAt: 1_500 });
+  // Still open: it stays in Replies until it's closed.
+  assert.deepEqual(groups(buildWaiting(input([read], { held, keep: { id: "a", group: "reply" } }))), ["reply:a"]);
+  // Opened again from Still with you: it stays there.
+  assert.deepEqual(groups(buildWaiting(input([read], { held, keep: { id: "a", group: "held" } }))), ["held:a"]);
+  // Dismissed with × while it's open: gone at once (11 Nov, the × did nothing).
+  assert.deepEqual(groups(buildWaiting(input([read], { held: {}, keep: { id: "a", group: "held" } }))), []);
+  // A new turn finished: a reply again.
+  const unread = thread("a", { lastReadAt: 1_500, latestAttentionAt: 3_000 });
+  assert.deepEqual(groups(buildWaiting(input([unread], { held }))), ["reply:a"]);
+  // Busy, or asking: those groups first.
+  assert.deepEqual(groups(buildWaiting(input([thread("a", { status: "active" })], { held }))), ["working:a"]);
+  assert.deepEqual(
+    groups(buildWaiting(input([thread("a", { hasPendingInteraction: true })], { held }))),
+    ["asking:a"],
+  );
+  // Hidden or archived never show.
+  assert.deepEqual(groups(buildWaiting(input([thread("a", { isArchived: true })], { held }))), []);
+});
+
+test("a hold goes when you send something after opening it, or the thread goes", () => {
+  const held = { a: 1_500, b: 1_500, c: 1_500, gone: 1_500 };
+  const threads = [thread("a"), thread("b"), thread("c", { isArchived: true }), thread("d")];
+  const turns = new Map<string, TurnSegment[]>([
+    // You replied after opening it, in a turn of its own.
+    ["a", [running(), { ...done(2_000, you), startedAt: 1_600, youAt: 1_600 }]],
+    // Your last message was before you opened it.
+    ["b", [running(), { ...done(1_200, you), startedAt: 1_100, youAt: 1_100 }]],
+  ]);
+  assert.deepEqual(releasedHolds(held, threads, turns, true), ["a", "c", "gone"]);
+  // While bb's list is loading, a missing thread is kept.
+  assert.deepEqual(releasedHolds(held, threads, turns, false), ["a", "c"]);
+  // Turns not read yet: kept.
+  assert.deepEqual(releasedHolds({ d: 1_500 }, threads, new Map(), true), []);
+});
+
+test("a message you steered into a running turn counts as replying", () => {
+  // The turn started before you opened the thread; you added to it after.
+  const events = parseTurnEvents([
+    { seq: 4, createdAt: 400, type: "turn/completed" },
+    { seq: 3, createdAt: 300, type: "client/turn/requested", data: { initiator: "user" } },
+    { seq: 2, createdAt: 100, type: "client/turn/requested", data: { initiator: "agent", senderThreadId: "thr_desk" } },
+  ]);
+  const segments = segmentTurns(events, true);
+  assert.equal(repliedSince(segments, 200), true);
+  assert.equal(repliedSince(segments, 350), false);
+  // A /compact you typed isn't a reply.
+  const compact = segmentTurns(
+    parseTurnEvents([
+      { seq: 2, createdAt: 500, type: "client/turn/requested", data: { initiator: "user", input: [{ type: "text", text: "/compact" }] } },
+    ]),
+    true,
+  );
+  assert.equal(repliedSince(compact, 200), false);
+});
+
+test("a held thread's turns are wanted, even read and idle", () => {
+  const wanted = turnsWanted([thread("read"), thread("held")], new Set(), {}, { held: 1_500 });
+  assert.deepEqual(wanted, [{ id: "held", key: "1000:idle" }]);
+});
+
+test("an ask whose thread is still with you says so", () => {
+  const rows = new Map([["thr_a", { group: "held" } as WaitingRow]]);
+  assert.equal(askStatus("thr_a", rows, new Set(["thr_a"])), "held");
 });

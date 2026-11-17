@@ -9,8 +9,9 @@
 //   weren't looking, since bb marks those read.
 // - The page (a nav panel) has three views. Panes lists the open threads
 //   with a state word each; All lists every active thread; Waiting lists the
-//   threads waiting on you, across every section, in four groups (Asking you,
-//   Replies, FYI, Working), with today's front desk and its asks under them.
+//   threads waiting on you, across every section, in five groups (Asking you,
+//   Replies, Still with you, FYI, Working), with today's front desk and its
+//   asks under them.
 //   Clicking a row slides bb's ThreadChat open. Ask the desk opens today's
 //   front desk thread there, and the + beside it starts a chat with bb's New
 //   thread composer. A thread's running workflows show as lines under it,
@@ -101,6 +102,8 @@ import {
   findDesk,
   formatAgo,
   hasUnread,
+  holdThread,
+  holdsOnOpen,
   judgedOrigins,
   ledgerFileName,
   ledgerFolder,
@@ -109,10 +112,12 @@ import {
   parseSeen,
   parseTurnEvents,
   relayCheck,
+  releasedHolds,
   segmentTurns,
   stepPanes,
   tally,
   turnsWanted,
+  withoutHolds,
   type LedgerAsk,
   type TurnSegment,
   type WaitingGroup,
@@ -197,6 +202,7 @@ const KEYS = {
   showAll: "bb-plugin-switchboard:show-all",
   view: "bb-plugin-switchboard:view",
   seen: "bb-plugin-switchboard:seen",
+  stillWithYou: "bb-plugin-switchboard:still-with-you",
   asksOpen: "bb-plugin-switchboard:asks-open",
   slideOut: "bb-plugin-switchboard:slide-out",
   panelFiles: "bb-plugin-switchboard:panel-files",
@@ -275,6 +281,7 @@ interface Settings {
   slideOutPanel: boolean;
   threadLinksInSlide: boolean;
   commitButton: boolean;
+  stillWithYou: boolean;
 }
 
 /** Settings as the page reads them. `values` is undefined until bb has loaded them. */
@@ -299,6 +306,7 @@ export function parseSettings(values: Record<string, unknown> | undefined): Sett
     slideOutPanel: values?.slideOutPanel !== false,
     threadLinksInSlide: values?.threadLinksInSlide !== false,
     commitButton: values?.commitButton !== false,
+    stillWithYou: values?.stillWithYou !== false,
   };
 }
 
@@ -483,6 +491,55 @@ const seenStore = (() => {
 })();
 
 /**
+ * Still with you: the threads you opened from Waiting and haven't replied in,
+ * with when you opened each (src/waiting.ts `holdsOnOpen`). localStorage,
+ * like the seen map, so every window agrees and a reload keeps them.
+ */
+const stillStore = (() => {
+  let value: Record<string, number> | null = null;
+  const listeners = new Set<Listener>();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+  const save = (next: Record<string, number>) => {
+    value = next;
+    writeStorage("local", KEYS.stillWithYou, JSON.stringify(next));
+    notify();
+  };
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== KEYS.stillWithYou) return;
+    value = parseSeen(event.newValue);
+    notify();
+  };
+  return {
+    subscribe(listener: Listener) {
+      if (listeners.size === 0) window.addEventListener("storage", onStorage);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) window.removeEventListener("storage", onStorage);
+      };
+    },
+    get(): Record<string, number> {
+      value ??= parseSeen(readStorage("local", KEYS.stillWithYou));
+      return value;
+    },
+    hold(threadId: string) {
+      const before = stillStore.get();
+      if (before[threadId] !== undefined) return;
+      save(holdThread(before, threadId, Date.now()));
+    },
+    release(threadIds: readonly string[]) {
+      const before = stillStore.get();
+      if (!threadIds.some((id) => before[id] !== undefined)) return;
+      save(withoutHolds(before, threadIds));
+    },
+  };
+})();
+
+const NO_HOLDS: Readonly<Record<string, number>> = {};
+
+/**
  * Which threads are open in panes, and which finished in one unwatched, from
  * the server: on mount, after a reconnect, and whenever it says it changed.
  */
@@ -537,15 +594,18 @@ interface Waiting {
 function useWaiting(
   relaySections: string,
   keep: { id: string; group: WaitingGroup } | null,
+  holding = false,
 ): Waiting {
   const { status, threads, sections } = useSidebarThreads();
   const summary = usePanesSummary();
   const sdk = useSdk();
   const seen = useSyncExternalStore(seenStore.subscribe, seenStore.get);
+  const stored = useSyncExternalStore(stillStore.subscribe, stillStore.get);
+  const held = holding ? stored : NO_HOLDS;
   const finished = useMemo(() => new Set(summary.finishedThreadIds), [summary.finishedThreadIds]);
   const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
 
-  const wantedKey = JSON.stringify(turnsWanted(threads, finished, seen));
+  const wantedKey = JSON.stringify(turnsWanted(threads, finished, seen, held));
   useEffect(() => {
     for (const { id, key } of JSON.parse(wantedKey) as { id: string; key: string }[]) {
       turnStore.ensure(sdk, id, key);
@@ -609,9 +669,25 @@ function useWaiting(
     [inRelaySection, chainTurns],
   );
 
+  // Let go of the threads you've replied in since you opened them, or that
+  // have gone; they're left out at once, and the store catches up.
+  const released = useMemo(
+    () => releasedHolds(held, threads, turns, status === "ready"),
+    [held, threads, turns, status],
+  );
+  const releasedKey = released.join(",");
+  useEffect(() => {
+    if (releasedKey.length > 0) stillStore.release(releasedKey.split(","));
+  }, [releasedKey]);
+  const stillHeld = useMemo(
+    () => (released.length === 0 ? held : withoutHolds(held, released)),
+    [held, released],
+  );
+
   const rows = useMemo(
-    () => buildWaiting({ threads, finishedInPanes: finished, seen, turns, isRelay, keep }),
-    [threads, finished, seen, turns, isRelay, keep],
+    () =>
+      buildWaiting({ threads, finishedInPanes: finished, seen, turns, isRelay, keep, held: stillHeld }),
+    [threads, finished, seen, turns, isRelay, keep, stillHeld],
   );
   return { status, threads, sections, byId, rows, summary, senders };
 }
@@ -1414,6 +1490,8 @@ function waitingHint(
   }
   if (row.asking !== null) {
     parts.push(ASKING_HINT[row.asking]);
+  } else if (row.group === "held") {
+    parts.push("You haven't replied");
   } else if (row.verdict.kind === "fyi") {
     const from = row.verdict.from;
     parts.push(
@@ -1436,9 +1514,21 @@ interface WaitingRowProps {
   selected: boolean;
   onOpen(threadId: string, group: WaitingGroup): void;
   onOpenInPane(threadId: string): void;
+  /** Still with you: let it go without replying. */
+  onDismiss(threadId: string): void;
 }
 
-function WaitingRowView({ row, thread, hint, now, runs, selected, onOpen, onOpenInPane }: WaitingRowProps) {
+function WaitingRowView({
+  row,
+  thread,
+  hint,
+  now,
+  runs,
+  selected,
+  onOpen,
+  onOpenInPane,
+  onDismiss,
+}: WaitingRowProps) {
   const rowStatus = useSidebarThreadRowStatus(row.id);
   const inline = useMemo<PluginThreadActionsInlineItem[]>(
     () => [
@@ -1488,6 +1578,17 @@ function WaitingRowView({ row, thread, hint, now, runs, selected, onOpen, onOpen
             ) : null}
           </span>
         </button>
+        {row.group === "held" ? (
+          <button
+            type="button"
+            className="sb-icon-button sb-dismiss"
+            aria-label={`Done with ${thread.displayTitle}`}
+            title="Done with it: take it off this list"
+            onClick={() => onDismiss(row.id)}
+          >
+            ×
+          </button>
+        ) : null}
         <ThreadActionsMenu
           thread={toActionTarget(thread)}
           inline={inline}
@@ -2559,7 +2660,7 @@ function SwitchboardPage() {
   const [opened, setOpened] = useState<{ id: string; group: WaitingGroup } | null>(null);
   const selectedThreadId = selection?.kind === "thread" ? selection.id : null;
   const keep = opened !== null && opened.id === selectedThreadId ? opened : null;
-  const waiting = useWaiting(settings.relaySections, keep);
+  const waiting = useWaiting(settings.relaySections, keep, settings.stillWithYou);
   const { status, threads, summary, sections, senders } = waiting;
   // The count leaves out the open thread once it's read, like the rail badge.
   const counts = useMemo(() => {
@@ -2778,14 +2879,20 @@ function SwitchboardPage() {
       const thread = byId.get(id);
       setOpened(group === null ? null : { id, group });
       if (thread === undefined) return;
+      // Still with you: it stays in Waiting, once you've moved on, until you
+      // reply in it or dismiss it.
+      if (settings.stillWithYou && holdsOnOpen(group, rowsById.get(id)?.asking ?? null)) {
+        stillStore.hold(id);
+      }
       seenStore.mark(id, thread.latestAttentionAt, activeIds);
       const finished = new Set(summary.finishedThreadIds);
       if (hasUnread(thread, finished, {})) {
         void sdk.threads.markRead({ threadId: id }).catch(() => undefined);
       }
     },
-    [byId, activeIds, summary.finishedThreadIds, sdk],
+    [byId, activeIds, summary.finishedThreadIds, sdk, settings.stillWithYou, rowsById],
   );
+  const dismissHeld = useCallback((id: string) => stillStore.release([id]), []);
   const openFromWaiting = useCallback(
     (id: string, group: WaitingGroup | null) => {
       openThread(id);
@@ -3105,6 +3212,7 @@ function SwitchboardPage() {
                         selected={selectedId === row.id}
                         onOpen={openFromWaiting}
                         onOpenInPane={openInPane}
+                        onDismiss={dismissHeld}
                       />
                     );
                   })}

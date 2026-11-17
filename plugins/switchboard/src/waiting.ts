@@ -22,6 +22,13 @@
  * A `/compact`, and the "Please continue." bb sends when it retries after a
  * usage limit, have nothing to read in them, so they don't count either way.
  * - Working: a top-level thread that's busy.
+ * - Still with you: a thread you opened from Replies (or from Asking you for
+ *   anything but a question) and haven't sent anything in since. Opening it
+ *   marked it read, so without this it would drop out of sight the moment you
+ *   opened something else. It goes when you send a message in it (from
+ *   anywhere: the slide, a pane, your phone), when you dismiss it, or when
+ *   it's archived. A question needs no holding: it stays in Asking you until
+ *   it's answered.
  *
  * "Haven't read" is bb's unread state, plus a thread open in a pane that
  * finished a turn while you weren't looking at that pane, since bb marks any
@@ -37,13 +44,14 @@
 
 import { isBusy, isWaitingOnUser, stepMemory, type MemoryMap, type ThreadFacts } from "./current.ts";
 
-export type WaitingGroup = "asking" | "reply" | "fyi" | "working";
+export type WaitingGroup = "asking" | "reply" | "held" | "fyi" | "working";
 
-export const GROUP_ORDER: readonly WaitingGroup[] = ["asking", "reply", "fyi", "working"];
+export const GROUP_ORDER: readonly WaitingGroup[] = ["asking", "reply", "held", "fyi", "working"];
 
 export const GROUP_LABEL: Record<WaitingGroup, string> = {
   asking: "Asking you",
   reply: "Replies",
+  held: "Still with you",
   fyi: "FYI",
   working: "Working",
 };
@@ -154,6 +162,8 @@ export interface TurnSegment {
   origins: TurnOrigin[];
   /** When its first request came in, where known. */
   startedAt?: number;
+  /** When the newest message you sent in it came in, if you sent one. */
+  youAt?: number;
 }
 
 /**
@@ -169,8 +179,10 @@ export function segmentTurns(events: readonly TurnEvent[], exhausted: boolean): 
     } else {
       const segment = segments[segments.length - 1]!;
       segment.origins.push(event.origin);
-      // Newest first, so the last request seen is the turn's first.
+      // Newest first, so the last request seen is the turn's first, and the
+      // first of yours seen is your newest.
       segment.startedAt = event.createdAt;
+      if (event.origin.kind === "you") segment.youAt ??= event.createdAt;
     }
   }
   if (!exhausted && segments.length > 1) segments.pop();
@@ -446,6 +458,8 @@ export interface WaitingInput {
   isRelay: RelayCheck;
   /** The thread open in the slide keeps its row, in the group it was in, while it's open. */
   keep: { id: string; group: WaitingGroup } | null;
+  /** Still with you: the threads you opened and haven't replied in, with when you opened each. */
+  held?: Readonly<Record<string, number>>;
 }
 
 function attentionOf(thread: WaitingFacts): number {
@@ -478,6 +492,7 @@ function askingReason(thread: WaitingFacts, child: boolean): WaitingRow["asking"
 /** The threads needing a look, each in its group, newest first within a group. */
 export function buildWaiting(input: WaitingInput): WaitingRow[] {
   const { threads, finishedInPanes, seen, turns, isRelay, keep } = input;
+  const held = input.held ?? {};
   const visible = threads.filter((thread) => !thread.isHidden && !thread.isArchived);
   const ids = new Set(visible.map((thread) => thread.id));
   const rows: WaitingRow[] = [];
@@ -508,13 +523,17 @@ export function buildWaiting(input: WaitingInput): WaitingRow[] {
       continue;
     }
     const unread = hasUnread(thread, finishedInPanes, seen);
-    const kept = keep !== null && keep.id === thread.id;
-    if (unread || kept) {
+    const kept = keep !== null && keep.id === thread.id ? keep.group : null;
+    if (unread || (kept !== null && kept !== "held")) {
       const verdict = unreadVerdict(segments, thread.lastReadAt, isRelay);
       let group: WaitingGroup = verdict.kind === "fyi" ? "fyi" : "reply";
       // Read now, because it's open: it stays where it was until it's closed.
-      if (!unread && (keep?.group === "reply" || keep?.group === "fyi")) group = keep.group;
+      if (!unread && (kept === "reply" || kept === "fyi")) group = kept;
       rows.push({ ...base, group, verdict, parentId: null, asking: null });
+    } else if (held[thread.id] !== undefined) {
+      // Only while it's held, open or not: × takes it off at once, even when
+      // it's the chat in the slide.
+      rows.push({ ...base, group: "held", verdict: { kind: "unknown" }, parentId: null, asking: null });
     }
   }
   const rank = new Map(GROUP_ORDER.map((group, index) => [group, index]));
@@ -532,6 +551,7 @@ export function turnsWanted(
   threads: readonly WaitingFacts[],
   finishedInPanes: ReadonlySet<string>,
   seen: Readonly<Record<string, number>>,
+  held: Readonly<Record<string, number>> = {},
 ): { id: string; key: string }[] {
   const ids = new Set(threads.map((thread) => thread.id));
   const out: { id: string; key: string }[] = [];
@@ -539,7 +559,9 @@ export function turnsWanted(
     if (thread.isHidden || thread.isArchived) continue;
     if (thread.parentThreadId !== null && ids.has(thread.parentThreadId)) continue;
     const busy = isBusy(thread);
-    if (!busy && !hasUnread(thread, finishedInPanes, seen)) continue;
+    // Still with you: its turns say whether you've replied since.
+    const wanted = busy || hasUnread(thread, finishedInPanes, seen) || held[thread.id] !== undefined;
+    if (!wanted) continue;
     out.push({ id: thread.id, key: `${attentionOf(thread)}:${busy ? "busy" : "idle"}` });
   }
   return out;
@@ -549,15 +571,17 @@ export function turnsWanted(
 export interface WaitingTally {
   asking: number;
   replies: number;
+  held: number;
   fyi: number;
   working: number;
 }
 
 export function tally(rows: readonly WaitingRow[]): WaitingTally {
-  const out: WaitingTally = { asking: 0, replies: 0, fyi: 0, working: 0 };
+  const out: WaitingTally = { asking: 0, replies: 0, held: 0, fyi: 0, working: 0 };
   for (const row of rows) {
     if (row.group === "asking") out.asking += 1;
     else if (row.group === "reply") out.replies += 1;
+    else if (row.group === "held") out.held += 1;
     else if (row.group === "fyi") out.fyi += 1;
     else out.working += 1;
   }
@@ -568,7 +592,11 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** The rail badge: Asking you plus Replies; amber while anything's asking. */
+/**
+ * The rail badge: Asking you plus Replies; amber while anything's asking.
+ * Still with you isn't counted: you've seen those, and a count that won't go
+ * down until you reply would stop meaning anything.
+ */
 export function badgeFor(
   counts: WaitingTally,
 ): { count: number; tone: "warning" | "neutral"; label: string } | null {
@@ -673,6 +701,7 @@ export type AskStatus = WaitingGroup | "read" | "archived" | "none";
 export const ASK_STATUS_LABEL: Record<AskStatus, string> = {
   asking: "Asking you",
   reply: "Reply",
+  held: "Still with you",
   fyi: "FYI",
   working: "Working",
   read: "Read",
@@ -721,4 +750,67 @@ export function markSeen(
   for (const [id, at] of Object.entries(seen)) if (activeIds.has(id)) out[id] = at;
   out[threadId] = attentionAt;
   return out;
+}
+
+/**
+ * Still with you: whether opening a thread from this group holds it.
+ * Replies, and Asking you for anything but a question (a failed turn, a
+ * message that didn't send). A question stays in Asking you until it's
+ * answered anyway, and FYI and Working aren't waiting on you.
+ */
+export function holdsOnOpen(group: WaitingGroup | null, asking: WaitingRow["asking"]): boolean {
+  if (group === "reply") return true;
+  return group === "asking" && asking !== null && asking !== "question";
+}
+
+/** The held map with a thread held, keeping when you first opened it. */
+export function holdThread(
+  held: Readonly<Record<string, number>>,
+  threadId: string,
+  at: number,
+): Record<string, number> {
+  return held[threadId] !== undefined ? { ...held } : { ...held, [threadId]: at };
+}
+
+/** Whether you sent a message in a thread at or after `since`, from its turns. */
+export function repliedSince(segments: readonly TurnSegment[], since: number): boolean {
+  return segments.some((segment) => segment.youAt !== undefined && segment.youAt >= since);
+}
+
+/**
+ * The held threads to let go: you've sent something in it since you opened
+ * it, or it's been archived or deleted. Kept while bb's thread list is
+ * loading, or its turns haven't been read yet.
+ */
+export function releasedHolds(
+  held: Readonly<Record<string, number>>,
+  threads: readonly WaitingFacts[],
+  turns: ReadonlyMap<string, readonly TurnSegment[]>,
+  listReady: boolean,
+): string[] {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const out: string[] = [];
+  for (const [id, at] of Object.entries(held)) {
+    const thread = byId.get(id);
+    if (thread === undefined) {
+      if (listReady) out.push(id);
+      continue;
+    }
+    if (thread.isArchived) {
+      out.push(id);
+      continue;
+    }
+    const segments = turns.get(id);
+    if (segments !== undefined && repliedSince(segments, at)) out.push(id);
+  }
+  return out.sort();
+}
+
+/** The held map without some threads. */
+export function withoutHolds(
+  held: Readonly<Record<string, number>>,
+  ids: readonly string[],
+): Record<string, number> {
+  const drop = new Set(ids);
+  return Object.fromEntries(Object.entries(held).filter(([id]) => !drop.has(id)));
 }

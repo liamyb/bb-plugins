@@ -317,6 +317,12 @@ export const CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sb-wrow > .sb-dismiss {
+  align-self: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.9375rem;
+}
 .sb-wrow[data-group="fyi"] .sb-title {
   color: color-mix(in oklab, var(--foreground, var(--ink)) 80%, transparent);
 }

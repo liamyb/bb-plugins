@@ -1,6 +1,6 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings, its Waiting view and rail badge, its Ask the desk button and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, committing from the slide or where bb's Commit button went, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view (with Still with you) and rail badge, its Ask the desk button and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, committing from the slide or where bb's Commit button went, why a thread you've already read is still in Waiting under Still with you, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
@@ -63,6 +63,19 @@ thread:
   `bb thread tell --compact-first` arrives, as the user's) and `initiator: "system"` with no
   `systemMessageSubject` and input "Please continue." (bb's retry after a usage limit). A
   retry's output, unread on its own, is judged by the turn before it.
+
+- **Still with you (`held`):** a thread opened from Switchboard while it was a Reply, or in
+  Asking you for a failed turn or a queued message that didn't send (`holdsOnOpen`; a question
+  isn't held, since it stays in Asking you until answered, and FYI and Working aren't). The hold
+  is when it was opened, kept in localStorage (`bb-plugin-switchboard:still-with-you`, thread id
+  to time), so every window shares it. It shows only when the thread isn't asking, busy or
+  unread (those groups win), and not while it's the open chat that was opened from Replies (it
+  keeps that place until the slide closes). `releasedHolds` lets it go when a turn has a request
+  from the user at or after the hold (`youAt` on the turn segment, so a message steered into a
+  running turn counts; a `/compact` doesn't), or the thread is archived, or missing once bb's
+  list has loaded. Held threads' turns are read even when idle and read (`turnsWanted`), so a
+  reply sent from another window or the phone still clears it. The row's × removes the hold.
+  Not in the rail badge. Off with `stillWithYou`.
 
 Today's asks: headed by today's front desk thread (below) with its status, then
 `<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read` every 60 seconds
@@ -244,6 +257,8 @@ background commands get no lines.
 - `askLedgerFolder` (string, default `automation/front-desk/ledger`): the front desk ledger
   folder for Today's asks. Empty turns the list off.
 - `railBadge` (boolean, default `true`): the count on the rail icon.
+- `stillWithYou` (boolean, default `true`): Waiting's Still with you group. Off: a thread you've
+  opened leaves Waiting as soon as it's read and closed, as before 0.2.7.
 - `usageGauge` (boolean, default `true`): the session and week rings in the title bar.
 - `stayOnSwitchboard` (boolean, default `true`): a narrow window showing Switchboard goes
   straight back to it when something other than the user opens a thread there.

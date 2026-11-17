@@ -73,6 +73,12 @@ A `/compact` (including the one `bb thread tell --compact-first` sends ahead of 
 the "Please continue." bb sends when it retries after a usage limit don't count either way.
 - **Working:** a thread that's busy, with its workflow lines under it. The second line says
   who it's working for when that's another thread.
+- **Still with you:** a thread you opened from Replies, or from Asking you for anything but a
+  question, and haven't sent anything in since. Opening a row marks it read, so before this a
+  thread dropped out of Waiting the moment you opened something else, often before you'd done
+  what it needed. Now it moves here and stays until you send a message in it (from anywhere:
+  the slide, a pane, your phone), dismiss it with ×, or archive it. A question isn't held,
+  because it stays in Asking you until it's answered. Not counted on the rail icon.
 
 Each row has the thread's section on its second line, and how long ago it last finished.
 Clicking a row opens it in the slide and marks it read; it keeps its place until you close the
@@ -96,7 +102,7 @@ thread's attention time moves or it starts or stops working.
 Ask the desk below), with its own state, so it's one click away. Below it, if the front desk's
 ledger for today exists (`askLedgerFolder`, one JSON line per ask with `time`, `ask` and
 `thread`), what it was asked today, newest first, with where each ask's thread is now: Asking
-you, Reply, FYI, Working, Read or Archived. It's re-read every minute while the view shows.
+you, Reply, Still with you, FYI, Working, Read or Archived. It's re-read every minute while the view shows.
 
 **The rail badge.** Switchboard's rail icon shows the number of threads asking you plus
 replies, amber while any is asking, with the breakdown in its tooltip. It's worked out in every
@@ -292,6 +298,7 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `slideOutPanel` | `true` | In a window under 768px, the side panel slides out beside the list (the window widens) instead of covering it, and the bar's Show opens an agent's file in it |
 | `threadLinksInSlide` | `true` | A link to another thread in the slide's chat, or a row of a Threads card in it, opens that thread in the slide, with ← stepping back |
 | `commitButton` | `true` | A Commit button with the count at the top of the slide while the open chat's checkout has uncommitted changes. It asks first, then commits everything there, as bb's own Commit does |
+| `stillWithYou` | `true` | A thread you open from Replies (or Asking you, unless it's a question) moves to Still with you once you've moved on, and stays until you reply in it or dismiss it |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.

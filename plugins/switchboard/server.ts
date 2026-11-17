@@ -207,6 +207,13 @@ export default function switchboard(bb: BbPluginApi): void {
         "bb's own Commit button sits in the thread header, which the slide doesn't show. With this on, when the open chat's checkout has uncommitted changes, a Commit button with the count shows at the top of the slide. It lists the changes and asks first, then commits everything there, new files too, as bb's button does, with the message bb writes.",
       default: true,
     },
+    stillWithYou: {
+      type: "boolean",
+      label: "Waiting: keep what you've opened until you reply",
+      description:
+        "Opening a thread from Replies (or from Asking you, unless it's a question) marks it read, so it used to drop out of Waiting as soon as you opened something else. With this on it moves to Still with you instead, and stays there until you send a message in it, from anywhere, or dismiss it with ×. Not counted on the rail icon.",
+      default: true,
+    },
     threadLinksInSlide: {
       type: "boolean",
       label: "Thread links open in the slide",
