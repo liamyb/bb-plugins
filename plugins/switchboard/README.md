@@ -4,7 +4,7 @@ A compact view of the chats you've got going in bb. It lists the threads open in
 panes, in any bb window, with a state word against each one (Needs you, Working, Done, Idle),
 and clicking a row slides bb's own chat open in place so you can read and reply without leaving
 the view. A Waiting view gathers every thread that's waiting on you, in every section, and the
-rail icon counts the ones asking you or with a reply. An Ask the desk button opens today's
+rail icon counts the ones asking you or with an update. An Ask the desk button opens today's
 front desk thread, and the + beside it starts a blank chat on your project checkout. The title
 bar shows how much of your plan's session and week you've used. In the small window, bb's side
 panel slides out beside the list rather than covering it, links to other threads open in
@@ -57,8 +57,13 @@ thread that needs a look, from bb's own state, with no agent turns:
 
 - **Asking you:** a pending question or approval, a queued message that didn't send, or a
   failed turn. A child thread shows here, under its parent's name, while it's waiting for an
-  answer. Children show nowhere else, since their parent passes on what they find.
-- **Replies:** a thread with a finished turn you haven't read, where at least one of those
+  answer. Children show nowhere else, since their parent passes on what they find. So does a
+  thread whose unread reply asks you something: it ends on a question, has a form or buttons
+  to pick from, says `say "send"` (or `"OK"`, or `"Push it…"`), opens with "Still waiting on
+  you from my last reply", or ends by handing you a list ("Three things are still with you:").
+  A question inside a quoted draft doesn't count, since it's for whoever the draft goes to.
+  The second line says "Needs your answer" or "Waiting for your go-ahead".
+- **Updates:** a thread with a finished turn you haven't read that asks you nothing, where at least one of those
   turns was yours: you sent the message, a child reported back, or another thread handed it on
   while working for you. A thread is working for you when it's in one of the `relaySections`
   (the front desk forwards your messages word for word), or when the turn it sent the hand-off
@@ -73,7 +78,7 @@ A `/compact` (including the one `bb thread tell --compact-first` sends ahead of 
 the "Please continue." bb sends when it retries after a usage limit don't count either way.
 - **Working:** a thread that's busy, with its workflow lines under it. The second line says
   who it's working for when that's another thread.
-- **Still with you:** a thread you opened from Replies, or from Asking you for anything but a
+- **Still with you:** a thread you opened from Updates, or from Asking you for anything but a
   question, and haven't sent anything in since. Opening a row marks it read, so before this a
   thread dropped out of Waiting the moment you opened something else, often before you'd done
   what it needed. Now it moves here and stays until you send a message in it (from anywhere:
@@ -102,10 +107,12 @@ thread's attention time moves or it starts or stops working.
 Ask the desk below), with its own state, so it's one click away. Below it, if the front desk's
 ledger for today exists (`askLedgerFolder`, one JSON line per ask with `time`, `ask` and
 `thread`), what it was asked today, newest first, with where each ask's thread is now: Asking
-you, Reply, Still with you, FYI, Working, Read or Archived. It's re-read every minute while the view shows.
+you, Update, Still with you, FYI, Working, Read or Archived. A thread has one state however
+many asks went to it, so it shows at full strength on the thread's newest ask and faded on its
+older ones. It's re-read every minute while the view shows.
 
 **The rail badge.** Switchboard's rail icon shows the number of threads asking you plus
-replies, amber while any is asking, with the breakdown in its tooltip. It's worked out in every
+updates, amber while any is asking, with the breakdown in its tooltip. It's worked out in every
 window from the same rules, so it's there whether or not the page is open. `railBadge` turns
 it off.
 
@@ -292,13 +299,13 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `frontDesk` | `Front desk` | The section (name or id) whose pinned thread Ask the desk opens and Today's asks starts with. Empty: a plain New chat button and no desk line |
 | `relaySections` | `Front desk` | Section names or ids, comma-separated, whose threads pass on your asks: a reply to a turn one of them started counts as a reply, not FYI, and so does one from a thread whose sending turn was yours, up to three threads back |
 | `askLedgerFolder` | `automation/front-desk/ledger` | Where the front desk's daily ledger lives (`<YYYY-MM-DD>.jsonl`). A relative path is read from the `newChatEnvironmentId` checkout. Empty: no Today's asks |
-| `railBadge` | `true` | The count of threads asking you or with a reply on the rail icon |
+| `railBadge` | `true` | The count of threads asking you or with an update on the rail icon |
 | `usageGauge` | `true` | The session and week usage rings in the title bar |
 | `stayOnSwitchboard` | `true` | A narrow window showing Switchboard goes straight back to it when something other than you opens a thread there, such as an agent's `bb thread open` |
 | `slideOutPanel` | `true` | In a window under 768px, the side panel slides out beside the list (the window widens) instead of covering it, and the bar's Show opens an agent's file in it |
 | `threadLinksInSlide` | `true` | A link to another thread in the slide's chat, or a row of a Threads card in it, opens that thread in the slide, with ← stepping back |
 | `commitButton` | `true` | A Commit button with the count at the top of the slide while the open chat's checkout has uncommitted changes. It asks first, then commits everything there, as bb's own Commit does |
-| `stillWithYou` | `true` | A thread you open from Replies (or Asking you, unless it's a question) moves to Still with you once you've moved on, and stays until you reply in it or dismiss it |
+| `stillWithYou` | `true` | A thread you open from Updates or Asking you (unless it's bb's own pending question) moves to Still with you once you've moved on, and stays until you reply in it or dismiss it |
 
 `bb plugin config switchboard set <key> <value>` sets one; they're also on the plugin's page
 in Settings.

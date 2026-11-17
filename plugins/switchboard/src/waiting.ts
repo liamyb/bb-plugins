@@ -4,11 +4,13 @@
  * so replies land all over the sidebar; this gathers them in one list, from
  * bb's own state, with no agent turns.
  *
- * Four groups:
+ * The groups:
  * - Asking you: a pending question or approval, a failed queued message or a
  *   failed turn. A child thread shows here and nowhere else, and only while
- *   it's waiting for an answer, since its parent relays everything else.
- * - Replies: a top-level thread with a finished turn you haven't read, where
+ *   it's waiting for an answer, since its parent relays everything else. So
+ *   does a top-level thread whose unread reply asks you something: a question,
+ *   a form, or a draft waiting for your "send" (src/asks.ts).
+ * - Updates: a top-level thread with a finished turn you haven't read, where
  *   at least one of those turns was yours: you sent it, a child reported back
  *   (the thread passes that on to you), or another thread handed it on while
  *   working for you. A thread is working for you when it's in a relay section
@@ -42,6 +44,7 @@
  * Pure, so it can be tested without bb.
  */
 
+import type { ReplyAsk } from "./asks.ts";
 import { isBusy, isWaitingOnUser, stepMemory, type MemoryMap, type ThreadFacts } from "./current.ts";
 
 export type WaitingGroup = "asking" | "reply" | "held" | "fyi" | "working";
@@ -50,7 +53,7 @@ export const GROUP_ORDER: readonly WaitingGroup[] = ["asking", "reply", "held", 
 
 export const GROUP_LABEL: Record<WaitingGroup, string> = {
   asking: "Asking you",
-  reply: "Replies",
+  reply: "Updates",
   held: "Still with you",
   fyi: "FYI",
   working: "Working",
@@ -442,8 +445,12 @@ export interface WaitingRow {
   verdict: Verdict;
   /** A child asking you: the thread it sits under. */
   parentId: string | null;
-  /** Why it's asking, for the Asking you group. */
-  asking: "question" | "queued-failed" | "failed" | null;
+  /**
+   * Why it's asking, for the Asking you group: bb's own pending question, a
+   * message that didn't send, a failed turn, or an unread reply that asks you
+   * a question or waits for your go-ahead.
+   */
+  asking: "question" | "queued-failed" | "failed" | "reply-question" | "reply-go-ahead" | null;
   attentionAt: number;
 }
 
@@ -460,6 +467,8 @@ export interface WaitingInput {
   keep: { id: string; group: WaitingGroup } | null;
   /** Still with you: the threads you opened and haven't replied in, with when you opened each. */
   held?: Readonly<Record<string, number>>;
+  /** What each unread thread's latest reply asks of you, where it's been read (src/asks.ts). */
+  replyAsks?: ReadonlyMap<string, ReplyAsk | null>;
 }
 
 function attentionOf(thread: WaitingFacts): number {
@@ -493,6 +502,7 @@ function askingReason(thread: WaitingFacts, child: boolean): WaitingRow["asking"
 export function buildWaiting(input: WaitingInput): WaitingRow[] {
   const { threads, finishedInPanes, seen, turns, isRelay, keep } = input;
   const held = input.held ?? {};
+  const replyAsks = input.replyAsks ?? new Map<string, ReplyAsk | null>();
   const visible = threads.filter((thread) => !thread.isHidden && !thread.isArchived);
   const ids = new Set(visible.map((thread) => thread.id));
   const rows: WaitingRow[] = [];
@@ -524,7 +534,18 @@ export function buildWaiting(input: WaitingInput): WaitingRow[] {
     }
     const unread = hasUnread(thread, finishedInPanes, seen);
     const kept = keep !== null && keep.id === thread.id ? keep.group : null;
-    if (unread || (kept !== null && kept !== "held")) {
+    const ask = replyAsks.get(thread.id) ?? null;
+    if (ask !== null && (unread || kept === "asking")) {
+      // The reply asks you something: Asking you, and it stays there while
+      // it's open.
+      rows.push({
+        ...base,
+        group: "asking",
+        verdict: { kind: "unknown" },
+        parentId: null,
+        asking: ask === "go-ahead" ? "reply-go-ahead" : "reply-question",
+      });
+    } else if (unread || (kept !== null && kept !== "held")) {
       const verdict = unreadVerdict(segments, thread.lastReadAt, isRelay);
       let group: WaitingGroup = verdict.kind === "fyi" ? "fyi" : "reply";
       // Read now, because it's open: it stays where it was until it's closed.
@@ -567,7 +588,29 @@ export function turnsWanted(
   return out;
 }
 
-/** What the rail badge says: a count of Asking you plus Replies, or nothing. */
+/**
+ * The threads whose latest reply the view reads, to tell one that asks you
+ * something from an update: unread, idle, top-level threads that aren't
+ * already asking. The key changes when there's something new to read.
+ */
+export function asksWanted(
+  threads: readonly WaitingFacts[],
+  finishedInPanes: ReadonlySet<string>,
+  seen: Readonly<Record<string, number>>,
+): { id: string; key: string }[] {
+  const ids = new Set(threads.map((thread) => thread.id));
+  const out: { id: string; key: string }[] = [];
+  for (const thread of threads) {
+    if (thread.isHidden || thread.isArchived) continue;
+    if (thread.parentThreadId !== null && ids.has(thread.parentThreadId)) continue;
+    if (isBusy(thread) || askingReason(thread, false) !== null) continue;
+    if (!hasUnread(thread, finishedInPanes, seen)) continue;
+    out.push({ id: thread.id, key: String(attentionOf(thread)) });
+  }
+  return out;
+}
+
+/** What the rail badge says: a count of Asking you plus Updates, or nothing. */
 export interface WaitingTally {
   asking: number;
   replies: number;
@@ -593,7 +636,7 @@ function plural(count: number, one: string, many: string): string {
 }
 
 /**
- * The rail badge: Asking you plus Replies; amber while anything's asking.
+ * The rail badge: Asking you plus Updates; amber while anything's asking.
  * Still with you isn't counted: you've seen those, and a count that won't go
  * down until you reply would stop meaning anything.
  */
@@ -604,7 +647,7 @@ export function badgeFor(
   if (count === 0) return null;
   const parts: string[] = [];
   if (counts.asking > 0) parts.push(plural(counts.asking, "thread asking you", "threads asking you"));
-  if (counts.replies > 0) parts.push(plural(counts.replies, "reply", "replies"));
+  if (counts.replies > 0) parts.push(plural(counts.replies, "update", "updates"));
   return {
     count,
     tone: counts.asking > 0 ? "warning" : "neutral",
@@ -700,7 +743,7 @@ export type AskStatus = WaitingGroup | "read" | "archived" | "none";
 
 export const ASK_STATUS_LABEL: Record<AskStatus, string> = {
   asking: "Asking you",
-  reply: "Reply",
+  reply: "Update",
   held: "Still with you",
   fyi: "FYI",
   working: "Working",
@@ -813,4 +856,23 @@ export function withoutHolds(
 ): Record<string, number> {
   const drop = new Set(ids);
   return Object.fromEntries(Object.entries(held).filter(([id]) => !drop.has(id)));
+}
+
+/**
+ * Today's asks, newest first: whether each row is its thread's newest. A
+ * thread has one state however many asks went to it, so its older rows show
+ * that state faded. `shown`: threads whose state is already on the list
+ * (today's desk, at the top).
+ */
+export function newestPerThread(
+  threadIds: readonly (string | null)[],
+  shown: readonly string[] = [],
+): boolean[] {
+  const seen = new Set(shown);
+  return threadIds.map((id) => {
+    if (id === null) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }

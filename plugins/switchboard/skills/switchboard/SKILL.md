@@ -36,9 +36,18 @@ thread:
 - **Asking you:** `hasPendingInteraction`, a `waiting-for-input` or `queued-failed` indicator,
   `error` status or an `unread-error` indicator. Children appear only here, and only while
   waiting on the user (pending interaction, `waiting-for-input` or `queued-failed`), labelled
-  "Under <parent>".
+  "Under <parent>". Also an unread, idle, top-level thread whose latest reply asks the user
+  something (`src/asks.ts`, asking reason `reply-question` or `reply-go-ahead`): the last
+  `agentMessage` item before the newest `turn/completed` (`threads.events.list`, types
+  `item/completed` and `turn/completed`, 16 events, read once per attention time by `askStore`;
+  `asksWanted` says which threads). It asks when a ui block has a Form, Plan or Decision or a
+  Button with no action (a Send/Push/Post/Approve label makes it a go-ahead), the closing two
+  paragraphs say `say "…"` or hand things over ("still with you:", "your call."), the reply
+  has "Still waiting on you from my last reply", or the last paragraph has a question. Drafts
+  (blockquotes), quoted text, code and links are ignored. No message within reach: an Update.
+  It stays in Asking you while it's the open chat, then Still with you holds it.
 - **Working:** busy, by the same rule as the Panes view.
-- **Replies / FYI:** not busy and unread. Unread is bb's `isUnread`, `latestAttentionAt` after
+- **Updates (group `reply`, formerly Replies) / FYI:** not busy, unread, and asking nothing. Unread is bb's `isUnread`, `latestAttentionAt` after
   `lastReadAt`, or the thread being in the server's `finishedThreadIds` (it finished in a pane
   while that pane, or its window, wasn't focused; each window's overlay works this out with
   `stepPanes` and adds it to its `reportPanes` call). A thread opened from Switchboard is marked
@@ -81,7 +90,8 @@ Today's asks: headed by today's front desk thread (below) with its status, then
 `<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read` every 60 seconds
 while the Waiting view shows. Relative folders resolve against the path of the
 `newChatEnvironmentId` environment. Each status is the thread's Waiting group, else Read
-(active) or Archived.
+(active) or Archived. `newestPerThread` marks each thread's newest ask; older asks to the same
+thread show its state faded (`data-repeat`).
 
 ## Ask the desk and the usage gauge
 
@@ -101,7 +111,7 @@ while the window isn't the active one (Liam couldn't find the reset times, 10 No
 is also `app-region: no-drag`, a safeguard: replaying bb's drag areas over a faked Mac window
 found the gauge already cut out of the title bar's drag strip.
 
-The rail badge (`experimental_useBadge` on the nav panel) is Asking you plus Replies, tone
+The rail badge (`experimental_useBadge` on the nav panel) is Asking you plus Updates, tone
 `warning` while anything is asking, computed in every window. Setting `railBadge` turns it off.
 
 ## Thread links and the slide-out panel

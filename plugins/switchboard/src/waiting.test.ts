@@ -9,6 +9,7 @@ import {
   formatAgo,
   chainCheck,
   chainWanted,
+  asksWanted,
   hasUnread,
   holdThread,
   holdsOnOpen,
@@ -17,6 +18,7 @@ import {
   ledgerFileName,
   ledgerFolder,
   markSeen,
+  newestPerThread,
   originOf,
   parseLedger,
   parseSeen,
@@ -424,12 +426,12 @@ test("the tally and the rail badge count Asking you and Replies", () => {
   assert.deepEqual(badgeFor(counts), {
     count: 2,
     tone: "warning",
-    label: "Switchboard: 1 thread asking you, 1 reply",
+    label: "Switchboard: 1 thread asking you, 1 update",
   });
   assert.deepEqual(badgeFor({ asking: 0, replies: 3, held: 0, fyi: 2, working: 1 }), {
     count: 3,
     tone: "neutral",
-    label: "Switchboard: 3 replies",
+    label: "Switchboard: 3 updates",
   });
   assert.equal(badgeFor({ asking: 0, replies: 0, held: 0, fyi: 4, working: 2 }), null);
   // Still with you isn't counted: you've seen those.
@@ -678,4 +680,66 @@ test("a held thread's turns are wanted, even read and idle", () => {
 test("an ask whose thread is still with you says so", () => {
   const rows = new Map([["thr_a", { group: "held" } as WaitingRow]]);
   assert.equal(askStatus("thr_a", rows, new Set(["thr_a"])), "held");
+});
+
+test("17 Nov: a reply that asks you something is in Asking you; one that only tells you is an Update", () => {
+  const threads = [
+    thread("q", { latestAttentionAt: 2_000 }),
+    thread("go", { latestAttentionAt: 2_000 }),
+    thread("news", { latestAttentionAt: 2_000 }),
+    thread("unknown", { latestAttentionAt: 2_000 }),
+  ];
+  const replyAsks = new Map([
+    ["q", "question" as const],
+    ["go", "go-ahead" as const],
+    ["news", null],
+  ]);
+  const rows = buildWaiting(input(threads, { replyAsks }));
+  assert.deepEqual(groups(rows), ["asking:q", "asking:go", "reply:news", "reply:unknown"]);
+  assert.equal(rows.find((row) => row.id === "q")!.asking, "reply-question");
+  assert.equal(rows.find((row) => row.id === "go")!.asking, "reply-go-ahead");
+  // The rail counts both, amber for the asks.
+  assert.deepEqual(badgeFor(tally(rows)), {
+    count: 4,
+    tone: "warning",
+    label: "Switchboard: 2 threads asking you, 2 updates",
+  });
+});
+
+test("an asking reply stays in Asking you while it's open, then is held once you move on", () => {
+  const read = thread("q", { lastReadAt: 2_000, latestAttentionAt: 2_000 });
+  const replyAsks = new Map([["q", "question" as const]]);
+  assert.deepEqual(groups(buildWaiting(input([read], { replyAsks, keep: { id: "q", group: "asking" } }))), ["asking:q"]);
+  // Read and closed: not asking any more, unless it's held.
+  assert.deepEqual(groups(buildWaiting(input([read], { replyAsks }))), []);
+  assert.deepEqual(groups(buildWaiting(input([read], { replyAsks, held: { q: 2_000 } }))), ["held:q"]);
+  assert.equal(holdsOnOpen("asking", "reply-question"), true);
+  assert.equal(holdsOnOpen("asking", "reply-go-ahead"), true);
+  // Busy again: Working, whatever the last reply said.
+  assert.deepEqual(groups(buildWaiting(input([thread("q", { status: "active" })], { replyAsks }))), ["working:q"]);
+});
+
+test("the replies read are unread, idle, top-level and not already asking", () => {
+  const wanted = asksWanted(
+    [
+      thread("read"),
+      thread("unread", { latestAttentionAt: 2_000 }),
+      thread("busy", { status: "active", latestAttentionAt: 2_000 }),
+      thread("pending", { hasPendingInteraction: true, latestAttentionAt: 2_000 }),
+      thread("child", { parentThreadId: "unread", latestAttentionAt: 2_000 }),
+      thread("archived", { isArchived: true, latestAttentionAt: 2_000 }),
+    ],
+    new Set(),
+    {},
+  );
+  assert.deepEqual(wanted, [{ id: "unread", key: "2000" }]);
+});
+
+test("Today's asks shows a thread's state once, on its newest ask", () => {
+  // Newest first; thr_hub took three asks, the desk one.
+  assert.deepEqual(
+    newestPerThread(["thr_hub", "thr_dk", "thr_hub", null, "thr_desk", "thr_hub"], ["thr_desk"]),
+    [true, true, false, true, false, false],
+  );
+  assert.deepEqual(newestPerThread([]), []);
 });

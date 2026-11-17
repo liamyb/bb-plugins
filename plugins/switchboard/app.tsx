@@ -10,8 +10,9 @@
 // - The page (a nav panel) has three views. Panes lists the open threads
 //   with a state word each; All lists every active thread; Waiting lists the
 //   threads waiting on you, across every section, in five groups (Asking you,
-//   Replies, Still with you, FYI, Working), with today's front desk and its
-//   asks under them.
+//   Updates, Still with you, FYI, Working), with today's front desk and its
+//   asks under them. A reply that asks you something (src/asks.ts) is in
+//   Asking you; one that only tells you something is an Update.
 //   Clicking a row slides bb's ThreadChat open. Ask the desk opens today's
 //   front desk thread there, and the + beside it starts a chat with bb's New
 //   thread composer. A thread's running workflows show as lines under it,
@@ -88,6 +89,7 @@ import {
   type RunMap,
   type WorkflowRun,
 } from "./src/current";
+import { FINAL_EVENT_LIMIT, FINAL_EVENT_TYPES, finalMessage, replyAsk, type ReplyAsk } from "./src/asks";
 import {
   ASK_STATUS_LABEL,
   GROUP_LABEL,
@@ -95,6 +97,7 @@ import {
   TURN_EVENT_LIMIT,
   TURN_EVENT_TYPES,
   askStatus,
+  asksWanted,
   badgeFor,
   buildWaiting,
   chainCheck,
@@ -108,6 +111,7 @@ import {
   ledgerFileName,
   ledgerFolder,
   markSeen,
+  newestPerThread,
   parseLedger,
   parseSeen,
   parseTurnEvents,
@@ -348,6 +352,50 @@ const turnStore = (() => {
           if (loading.get(threadId) !== key) return;
           const exhausted = Array.isArray(rows) && rows.length < TURN_EVENT_LIMIT;
           entries.set(threadId, { key, segments: segmentTurns(parseTurnEvents(rows), exhausted) });
+          notify();
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (loading.get(threadId) === key) loading.delete(threadId);
+        });
+    },
+  };
+})();
+
+/**
+ * What each unread thread's latest reply asks of you (src/asks.ts), read once
+ * per attention time: a question, a go-ahead, or nothing (an update).
+ */
+const askStore = (() => {
+  const entries = new Map<string, { key: string; ask: ReplyAsk | null }>();
+  const loading = new Map<string, string>();
+  const listeners = new Set<Listener>();
+  let snapshot: ReadonlyMap<string, ReplyAsk | null> = new Map();
+  const notify = () => {
+    snapshot = new Map([...entries].map(([id, entry]) => [id, entry.ask]));
+    for (const listener of listeners) listener();
+  };
+  return {
+    subscribe(listener: Listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    get: () => snapshot,
+    ensure(sdk: Sdk, threadId: string, key: string) {
+      if (entries.get(threadId)?.key === key || loading.get(threadId) === key) return;
+      loading.set(threadId, key);
+      sdk.threads.events
+        .list({
+          threadId,
+          types: FINAL_EVENT_TYPES,
+          order: "desc",
+          limit: String(FINAL_EVENT_LIMIT),
+        })
+        .then((rows) => {
+          if (loading.get(threadId) !== key) return;
+          entries.set(threadId, { key, ask: replyAsk(finalMessage(rows)) });
           notify();
         })
         .catch(() => undefined)
@@ -614,6 +662,15 @@ function useWaiting(
   const turns = useSyncExternalStore(turnStore.subscribe, turnStore.get);
   const chainTurns = useSyncExternalStore(chainStore.subscribe, chainStore.get);
 
+  // Each unread reply, read to tell one that asks you something from an update.
+  const asksKey = JSON.stringify(asksWanted(threads, finished, seen));
+  useEffect(() => {
+    for (const { id, key } of JSON.parse(asksKey) as { id: string; key: string }[]) {
+      askStore.ensure(sdk, id, key);
+    }
+  }, [sdk, asksKey]);
+  const replyAsks = useSyncExternalStore(askStore.subscribe, askStore.get);
+
   // Senders that aren't active threads: their section decides a relay.
   const unknownSenders = useMemo(() => {
     const ids = new Set<string>();
@@ -686,8 +743,17 @@ function useWaiting(
 
   const rows = useMemo(
     () =>
-      buildWaiting({ threads, finishedInPanes: finished, seen, turns, isRelay, keep, held: stillHeld }),
-    [threads, finished, seen, turns, isRelay, keep, stillHeld],
+      buildWaiting({
+        threads,
+        finishedInPanes: finished,
+        seen,
+        turns,
+        isRelay,
+        keep,
+        held: stillHeld,
+        replyAsks,
+      }),
+    [threads, finished, seen, turns, isRelay, keep, stillHeld, replyAsks],
   );
   return { status, threads, sections, byId, rows, summary, senders };
 }
@@ -1471,6 +1537,8 @@ function ThreadRow({ row, depth, threads, runs, now, selectedId, onOpen, onOpenI
 const ASKING_HINT: Record<NonNullable<WaitingRow["asking"]>, string> = {
   question: "Waiting for your answer",
   "queued-failed": "A queued message didn't send",
+  "reply-question": "Needs your answer",
+  "reply-go-ahead": "Waiting for your go-ahead",
   failed: "The last turn failed",
 };
 
@@ -1687,6 +1755,15 @@ interface TodaysAsksProps {
 function TodaysAsks({ asks, desk, rows, activeIds, open, onToggle, onOpen }: TodaysAsksProps) {
   const newestFirst = useMemo(() => [...asks].reverse(), [asks]);
   const deskStatus = desk === null ? null : askStatus(desk.id, rows, activeIds);
+  // A thread's state shows once, on its newest ask (or the desk line).
+  const newest = useMemo(
+    () =>
+      newestPerThread(
+        newestFirst.map((ask) => ask.threadId),
+        desk !== null && deskStatus !== null ? [desk.id] : [],
+      ),
+    [newestFirst, desk, deskStatus],
+  );
   return (
     <details
       className="sb-asks"
@@ -1718,7 +1795,11 @@ function TodaysAsks({ asks, desk, rows, activeIds, open, onToggle, onOpen }: Tod
         ) : null}
         {newestFirst.map((ask, index) => {
           const status = askStatus(ask.threadId, rows, activeIds);
+          // An older ask to a thread whose state shows on a newer row: the same
+          // state, faded.
+          const repeat = newest[index] === false;
           const label = ASK_STATUS_LABEL[status];
+          const spoken = repeat && label.length > 0 ? `${label}, same thread as a newer ask` : label;
           const threadId = ask.threadId;
           return (
             <li key={`${index}:${ask.time}:${ask.ask}`}>
@@ -1727,14 +1808,19 @@ function TodaysAsks({ asks, desk, rows, activeIds, open, onToggle, onOpen }: Tod
                 className="sb-ask"
                 disabled={threadId === null || status === "archived"}
                 title={ask.ask}
-                aria-label={[ask.time, ask.ask, label].filter(Boolean).join(", ")}
+                aria-label={[ask.time, ask.ask, spoken].filter(Boolean).join(", ")}
                 onClick={() => {
                   if (threadId !== null) onOpen(threadId);
                 }}
               >
                 <span className="sb-ask-time">{ask.time}</span>
                 <span className="sb-ask-text">{ask.ask}</span>
-                <span className="sb-state" data-status={status}>
+                <span
+                  className="sb-state"
+                  data-status={status}
+                  data-repeat={repeat ? "" : undefined}
+                  title={repeat ? "Same thread as a newer ask above: its state is shown there" : undefined}
+                >
                   {label}
                 </span>
               </button>

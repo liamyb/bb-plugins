@@ -394,7 +394,11 @@ export const CSS = `
 }
 .sb-state[data-status="reply"] {
   color: var(--primary);
-  font-weight: 600;
+}
+/* An older ask to a thread whose state shows on a newer row: the same state, faded. */
+.sb-state[data-repeat] {
+  font-weight: 400;
+  opacity: 0.4;
 }
 .sb-state[data-status="working"] {
   color: var(--foreground, var(--ink));
