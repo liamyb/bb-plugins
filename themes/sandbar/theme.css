@@ -231,6 +231,16 @@
     &::after {
       display: none;
     }
+
+    /*
+     * bb 0.49 (17 Nov 2026) also draws the card's outline as a separate
+     * element, 44px down from the top and above everything else. With the
+     * taller top bar it ran a line straight across the pane titles, so it
+     * goes too. The inset keeps its own line down the left.
+     */
+    > [data-sidebar="inset-edge"] {
+      display: none;
+    }
   }
 
   /* The rail's icons start below the top row, as they do in the browser. */
