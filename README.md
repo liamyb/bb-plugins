@@ -1,6 +1,6 @@
-# bb plugins and two themes
+# bb plugins and three themes
 
-Seven small [bb](https://getbb.app) plugins and two themes, built for working in lots of split panes,
+Seven small [bb](https://getbb.app) plugins and three themes, built for working in lots of split panes,
 mostly on a laptop screen. I'm not an engineer: all of it was written by Claude in bb threads, from
 plain-English asks, and it's what I run every day.
 
@@ -10,11 +10,12 @@ plain-English asks, and it's what I run every day.
 | [Pane Attention](plugins/pane-attention/) | Marks an unfocused pane when its thread has finished (teal) or is waiting on you (amber), and plays the "blade" slide between folded panes, like the Xbox 360 dashboard |
 | [Message Times](plugins/message-times/) | Shows the time you sent each of your messages beside its bubble, with the full date on hover |
 | [Switchboard](plugins/switchboard/) | A compact page listing the chats open in your panes, in any bb window, with a state word each. Click one and bb's chat slides open in place. Made for a small second window (Cmd+Shift+N); Cmd+Shift+S opens it |
-| [Theme Toggle](plugins/theme-toggle/) | One button in the sidebar footer, or Cmd+Option+T, switches bb between two themes: Sandbar and Mixtape unless you pick others |
+| [Theme Toggle](plugins/theme-toggle/) | One button in the sidebar footer, or Cmd+Option+T, switches bb between two themes (Sandbar and Mixtape unless you pick others), or goes round three when you set a third |
 | [Status Strip](plugins/status-strip/) | A one-line readout above each thread's composer, like a player's display: how many threads are working, how much of this thread's context window is used (on an LED bar) and its branch. Click it for the working threads |
 | [Orbit](plugins/orbit/) | A live map of every thread across bb. Today's front desk sits in the middle, each section is a system round its pinned hub, and child threads sit beside their parents. A working thread glows, each tool call sends out a ripple with the tool's name, and a hand-off between threads flies across as a comet. It draws bb's own state and starts no agent turns |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
 | [Mixtape theme](themes/mixtape/) | The same layout dressed as a late-90s media player: brushed-silver chrome and keys, green LCD readouts and a level meter, with light reading panels in light mode and dark ones in dark mode |
+| [Palm Noir theme](themes/palm-noir/) | The same layout at dusk on the coast: night-sky bars with a neon horizon, pane titles lit like neon signs, a sunset down the rail with the sun, the sea and two palms at its foot, and calm panels to read |
 
 Built on bb 0.44 and running on 0.46, on a Mac.
 
@@ -27,7 +28,7 @@ bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin m
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin pane-attention --tag-prefix pane-attention/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.3.0 --plugin pane-keeper --tag-prefix pane-keeper/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin switchboard --tag-prefix switchboard/
-bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin theme-toggle --tag-prefix theme-toggle/
+bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.2.0 --plugin theme-toggle --tag-prefix theme-toggle/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin status-strip --tag-prefix status-strip/
 bb plugin install git:https://github.com/liamyb/bb-plugins.git@^0.1.0 --plugin orbit --tag-prefix orbit/
 ```
@@ -39,12 +40,12 @@ in bb's `sidebar.visiblePluginPanels` setting (or that setting is reset), and it
 defaults to my project and checkout ids, so set `newChatProjectId` and `newChatEnvironmentId`
 to yours. The [Switchboard README](plugins/switchboard/) has the details.
 
-**Theme Toggle** needs both of its themes installed first (see below). Its two theme ids are
-settings, so it can switch between any pair.
+**Theme Toggle** needs its themes installed first (see below). The theme ids are settings, so it
+can flip between any pair, or go round three.
 
 **Status Strip** only shows in themes that ask for it, which Mixtape does. A setting shows it in
 every theme. While anything is working it also marks the page, which is what makes Mixtape's
-level meter move.
+level meter and Palm Noir's sunset move.
 
 **Orbit** works on its own, with any theme, and needs bb 0.49 or later. The middle of its map is
 the pinned thread of a section called Front desk, and its dotted lines come from the ledger file
@@ -121,6 +122,24 @@ titles as green LCD readouts, a purple bar for the open thread and a small level
 rail. In light mode the panels are a soft off-white with dark text, which I find much easier to
 read; in dark mode they're dark navy. It's built from Sandbar's file, so a layout fix there reaches it
 with `node build.mjs`; the [Mixtape README](themes/mixtape/) explains how.
+
+## The Palm Noir theme
+
+```sh
+mkdir -p "$(bb theme dir)/palm-noir"
+for f in theme.css theme.json; do
+  curl -fsSL "https://raw.githubusercontent.com/liamyb/bb-plugins/main/themes/palm-noir/$f" \
+    -o "$(bb theme dir)/palm-noir/$f"
+done
+bb theme set palm-noir
+```
+
+Palm Noir is Sandbar's layout at dusk on the coast: night-sky bars with the sunset glowing along
+their foot and a neon horizon under them, pane titles lit like neon signs, and a sunset down the
+rail to a striped sun going into the sea, with towers on the shore and two palms in front. The
+open thread is a slice of the sunset. In light mode the panels are a warm shell-white; in dark mode
+they're deep violet. It's an original look with its own name, and it's built from Sandbar's file
+in the same way as Mixtape; the [Palm Noir README](themes/palm-noir/) explains how.
 
 ## Patches
 
