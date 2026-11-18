@@ -1,9 +1,9 @@
 {
   "name": "bb-plugin-theme-toggle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Switches bb between two themes with one click or Cmd+Option+T.",
+  "description": "Switches bb between two or three themes with one click or Cmd+Option+T.",
   "license": "MIT",
   "engines": {
     "bb": ">=0.48",
@@ -11,7 +11,7 @@
   },
   "bb": {
     "name": "Theme Toggle",
-    "description": "A button in the sidebar footer, and Cmd+Option+T, that switch bb between two themes: Sandbar and Mixtape by default. Set the two theme ids in the plugin's settings.",
+    "description": "A button in the sidebar footer, and Cmd+Option+T, that switch bb between two themes (Sandbar and Mixtape by default), or go round three when you set a third. Set the theme ids in the plugin's settings.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
