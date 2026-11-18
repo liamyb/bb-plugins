@@ -15,7 +15,7 @@ plain-English asks, and it's what I run every day.
 | [Orbit](plugins/orbit/) | A live map of every thread across bb. Today's front desk sits in the middle, each section is a system round its pinned hub, and child threads sit beside their parents. A working thread glows, each tool call sends out a ripple with the tool's name, and a hand-off between threads flies across as a comet. It draws bb's own state and starts no agent turns |
 | [Sandbar theme](themes/sandbar/) | A sand-and-sea palette, plus the layout that makes the above work: a taller top bar, sliding panes, the attention colours and the blade slide |
 | [Mixtape theme](themes/mixtape/) | The same layout dressed as a late-90s media player: brushed-silver chrome and keys, green LCD readouts and a level meter, with light reading panels in light mode and dark ones in dark mode |
-| [Palm Noir theme](themes/palm-noir/) | The same layout at dusk on the coast: night-sky bars with a neon horizon, pane titles lit like neon signs, a sunset down the rail with the sun, the sea and two palms at its foot, and calm panels to read |
+| [Palm Noir theme](themes/palm-noir/) | The same layout at dusk on the coast: night-sky bars with a neon horizon, pane titles lit like neon signs, a sunset down the rail, and the coast itself, with the sun, the sea and palms, as a wallpaper behind the threads |
 
 Built on bb 0.44 and running on 0.46, on a Mac.
 
@@ -137,7 +137,8 @@ bb theme set palm-noir
 Palm Noir is Sandbar's layout at dusk on the coast: night-sky bars with the sunset glowing along
 their foot and a neon horizon under them, pane titles lit like neon signs, and a sunset down the
 rail to a striped sun going into the sea, with towers on the shore and two palms in front. The
-open thread is a slice of the sunset. In light mode the panels are a warm shell-white; in dark mode
+same coast, full size, is the wallpaper behind the threads. The open thread is a slice of the
+sunset. In light mode the panels are a warm shell-white; in dark mode
 they're deep violet. It's an original look with its own name, and it's built from Sandbar's file
 in the same way as Mixtape; the [Palm Noir README](themes/palm-noir/) explains how.
 

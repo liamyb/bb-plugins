@@ -312,6 +312,64 @@ header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page
   font-weight: 700;
 }
 
+/* ------------------------------------------- Wallpaper behind the threads */
+
+/*
+ * The coast at dusk fills the space round each conversation and behind New
+ * thread: the sky stretches to any size, the sun, sea and towers sit along
+ * the bottom, and a palm cluster stands at each side. A New thread page in
+ * a split already sits on the split's wallpaper, so it isn't given a second.
+ */
+:is(
+  [id="thread-detail-timeline-panel"],
+  [id="split-workspace-main-panel"],
+  [id="root-compose-main-panel"]:not([id="split-workspace-main-panel"] *)
+) {
+  background:
+    var(--pn-wall-left) left bottom / auto 88% no-repeat,
+    var(--pn-wall-right) right bottom / auto 72% no-repeat,
+    var(--pn-wall-horizon) center bottom / max(100%, 1100px) auto no-repeat,
+    var(--pn-wall-stars) left top / 640px auto repeat-x,
+    var(--pn-wall-sky);
+}
+
+/*
+ * The text you read stays on a calm panel: the column of messages and the
+ * composer's strip are the theme's panel colour, with the wallpaper beside
+ * them. The same shape Aura uses, so it looks alike with or without Aura.
+ */
+:is([id="thread-detail-timeline-panel"], [id="split-workspace-main-panel"]) {
+  .thread-scrollbar:has(> div > .mx-auto),
+  [data-scroll-footer] > .bg-background:has(> .mx-auto) {
+    background-color: transparent;
+  }
+
+  .thread-scrollbar > div > .mx-auto {
+    background-color: var(--background);
+    box-shadow: 0 0 0 1px var(--pn-panel-line);
+  }
+
+  [data-scroll-footer] > .bg-background > .mx-auto,
+  [data-markdown-preview] table,
+  [data-markdown-preview] div:has(> table) {
+    background-color: var(--background);
+  }
+}
+
+/*
+ * New thread's row under the composer (project, approvals) sits on the
+ * picture, so it gets a small frosted panel of its own and never lands on
+ * a palm trunk unreadably.
+ */
+:is([id="split-workspace-main-panel"], [id="root-compose-main-panel"]) [data-new-thread-footer] {
+  padding-block: 5px;
+  border: 1px solid var(--pn-panel-line);
+  border-radius: 11px;
+  background: color-mix(in oklab, var(--pn-panel) 90%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
 /* ------------------------------------------------- Thread list (sidebar) */
 
 /* The list is a calm panel under the sky. */
@@ -423,9 +481,9 @@ form[data-promptbox] :is(textarea, [contenteditable="true"]) {
 /* -------------------------------------------------------------- Plugins */
 
 /*
- * Aura paints a wallpaper behind each panel. Palm Noir has its own scenery,
- * so the wallpaper is hidden while this theme is on; switch back to Sandbar
- * and it returns. Aura itself is untouched.
+ * Aura paints its own wallpaper behind each conversation. Palm Noir has its
+ * own (below), so Aura's is hidden while this theme is on; switch back to
+ * Sandbar and it returns. Aura itself is untouched.
  */
 .aura-capy-layer {
   display: none !important;

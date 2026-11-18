@@ -20,8 +20,12 @@ motion on. Palm Noir doesn't turn on the strip itself.
 [Switchboard](../../plugins/switchboard/)'s rows take the thread list's look: bold titles, teal
 times and states, and a slice of the sunset for the open chat.
 
-If you use [Aura](https://github.com/MateoCerquetella/bb-plugins), its wallpaper is hidden while
-Palm Noir is on, since the theme brings its own scenery. Switch back to Sandbar and it returns.
+Behind the threads, and filling New thread, is the same coast as a wallpaper: a striped sun going
+into the sea between two clusters of palms, with towers on the shore. In light mode it's a
+golden-hour dusk; in dark mode it's a neon night with stars. The light on the water shimmers and
+the windows blink, gently, unless macOS has Reduce motion on. The messages you read stay on a calm
+panel down the middle. If you use [Aura](https://github.com/MateoCerquetella/bb-plugins), its
+wallpaper is hidden while Palm Noir is on, and it returns when you switch back to Sandbar.
 
 It carries all of the [Sandbar](../sandbar/) theme's layout (the taller top bar, sliding panes, the
 attention and family colours, the blade slide, the Mac frame fixes), so Pane Attention, Switchboard
@@ -50,13 +54,14 @@ The theme is the same in every window and on every device, so switching in one s
 
 ## Changing it
 
-`theme.css` is built, so don't edit it by hand. It's made from four files:
+`theme.css` is built, so don't edit it by hand. It's made from five files:
 
 | File | What's in it |
 |---|---|
 | `palette.css` | The colours and type |
 | `skin.css` | The sky, the neon, the panels and the rail |
 | `scene.mjs` | The sun, the sea, the towers and the palms at the foot of the rail, drawn as SVG |
+| `wallpaper.mjs` | The same coast, full size, as the wallpaper behind the threads |
 | `../sandbar/theme.css` | The layout, copied in from the "Taller top bar" block down |
 
 After changing any of them, including a layout fix in Sandbar, rebuild and re-apply:
