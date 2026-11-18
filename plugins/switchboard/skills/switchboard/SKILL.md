@@ -85,6 +85,10 @@ thread:
   list has loaded. Held threads' turns are read even when idle and read (`turnsWanted`), so a
   reply sent from another window or the phone still clears it. The row's × removes the hold.
   Not in the rail badge. Off with `stillWithYou`.
+- **The × on Updates and FYI rows** (18 Nov) marks the thread read without opening it: the seen
+  map at its attention time, and bb's read state when it's unread there. It doesn't hold it, and
+  it drops the open chat's kept place, so the row goes until the thread next finishes a turn.
+  Asking you and Working rows have no ×; they leave once answered or finished.
 
 Today's asks: headed by today's front desk thread (below) with its status, then
 `<askLedgerFolder>/<YYYY-MM-DD>.jsonl` (local date), read with `files.read` every 60 seconds

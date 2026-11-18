@@ -387,6 +387,26 @@ test("the thread open in the slide keeps its row after it's read", () => {
   assert.deepEqual(groups(buildWaiting(input([thread("a")], { turns }))), []);
 });
 
+test("18 Nov: an Update or FYI dismissed with × is gone until its next turn", () => {
+  const unread = { latestAttentionAt: 2_000 };
+  const threads = [thread("a", unread), thread("b", unread)];
+  const turns = new Map<string, TurnSegment[]>([
+    ["a", [running(), done(1_900, you)]],
+    ["b", [running(), done(1_950, fromThread("thr_hub"))]],
+  ]);
+  assert.deepEqual(groups(buildWaiting(input(threads, { turns }))), ["reply:a", "fyi:b"]);
+  // The × marks each seen at its attention, without a hold.
+  const seen = markSeen(markSeen({}, "a", 2_000, new Set(["a", "b"])), "b", 2_000, new Set(["a", "b"]));
+  assert.deepEqual(groups(buildWaiting(input(threads, { turns, seen }))), []);
+  // The open chat keeps its row after it's read, so the × drops that kept place too.
+  const open = { id: "a", group: "reply" } as const;
+  assert.deepEqual(groups(buildWaiting(input(threads, { turns, seen, keep: open }))), ["reply:a"]);
+  // The next turn brings it back.
+  const later = [thread("a", { latestAttentionAt: 3_000 }), thread("b", unread)];
+  const next = new Map(turns).set("a", [running(), done(2_900, you)]);
+  assert.deepEqual(groups(buildWaiting(input(later, { turns: next, seen }))), ["reply:a"]);
+});
+
 test("a working thread says who it's working for", () => {
   const turns = new Map([["a", [running(fromThread("thr_hub")), done(900, you)]]]);
   const rows = buildWaiting(input([thread("a", { status: "active" })], { turns }));

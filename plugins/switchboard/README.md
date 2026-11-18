@@ -87,7 +87,9 @@ the "Please continue." bb sends when it retries after a usage limit don't count 
 
 Each row has the thread's section on its second line, and how long ago it last finished.
 Clicking a row opens it in the slide and marks it read; it keeps its place until you close the
-slide. "Open in a pane" from the row menu works as everywhere else.
+slide. "Open in a pane" from the row menu works as everywhere else. Updates and FYI rows have a
+× too: it marks the thread read without opening it, and without holding it in Still with you,
+so it's gone until the thread next finishes a turn.
 
 **What "haven't read" means.** bb's own unread state, plus one case bb can't see: bb marks any
 thread showing in a split pane read the moment it finishes, focused or not. So each window's

@@ -1573,6 +1573,13 @@ function waitingHint(
   return parts.join(" · ");
 }
 
+/**
+ * The groups whose rows have a ×. Each is there for something you only need to
+ * read, so you can let it go without opening it. Asking you and Working leave
+ * on their own once answered or finished.
+ */
+const DISMISSABLE: ReadonlySet<WaitingGroup> = new Set(["reply", "fyi", "held"]);
+
 interface WaitingRowProps {
   row: WaitingRow;
   thread: PluginSidebarThread;
@@ -1582,7 +1589,7 @@ interface WaitingRowProps {
   selected: boolean;
   onOpen(threadId: string, group: WaitingGroup): void;
   onOpenInPane(threadId: string): void;
-  /** Still with you: let it go without replying. */
+  /** The ×, on Still with you, Updates and FYI: done with it without opening or replying. */
   onDismiss(threadId: string): void;
 }
 
@@ -1646,12 +1653,18 @@ function WaitingRowView({
             ) : null}
           </span>
         </button>
-        {row.group === "held" ? (
+        {DISMISSABLE.has(row.group) ? (
           <button
             type="button"
             className="sb-icon-button sb-dismiss"
-            aria-label={`Done with ${thread.displayTitle}`}
-            title="Done with it: take it off this list"
+            aria-label={
+              row.group === "held" ? `Done with ${thread.displayTitle}` : `Mark ${thread.displayTitle} read`
+            }
+            title={
+              row.group === "held"
+                ? "Done with it: take it off this list"
+                : "Mark it read: take it off this list until it next finishes"
+            }
             onClick={() => onDismiss(row.id)}
           >
             ×
@@ -2978,7 +2991,23 @@ function SwitchboardPage() {
     },
     [byId, activeIds, summary.finishedThreadIds, sdk, settings.stillWithYou, rowsById],
   );
-  const dismissHeld = useCallback((id: string) => stillStore.release([id]), []);
+  // The × on a Waiting row. Still with you lets go of the hold. An Update or
+  // FYI is marked read as if you'd opened it, but not held, so it's gone until
+  // the thread next finishes a turn. Either way, if it's the open chat it
+  // gives up its kept place too.
+  const dismissRow = useCallback(
+    (id: string) => {
+      stillStore.release([id]);
+      setOpened((current) => (current?.id === id ? null : current));
+      const thread = byId.get(id);
+      if (thread === undefined) return;
+      seenStore.mark(id, thread.latestAttentionAt, activeIds);
+      if (hasUnread(thread, new Set(summary.finishedThreadIds), {})) {
+        void sdk.threads.markRead({ threadId: id }).catch(() => undefined);
+      }
+    },
+    [byId, activeIds, summary.finishedThreadIds, sdk],
+  );
   const openFromWaiting = useCallback(
     (id: string, group: WaitingGroup | null) => {
       openThread(id);
@@ -3298,7 +3327,7 @@ function SwitchboardPage() {
                         selected={selectedId === row.id}
                         onOpen={openFromWaiting}
                         onOpenInPane={openInPane}
-                        onDismiss={dismissHeld}
+                        onDismiss={dismissRow}
                       />
                     );
                   })}
