@@ -59,26 +59,31 @@ const wall = (mode, live) => `
   --pn-wall-right: ${toUrl(palmsRight(mode))};
   --pn-wall-stars: ${mode === "dark" ? toUrl(stars(live)) : "none"};`;
 
-const wallpaper = `/*
- * The wallpaper behind the threads (wallpaper.mjs): a golden-hour dusk in
- * light mode and a neon night in dark, moving gently unless macOS has
- * Reduce motion on.
- */
-:root, .light {${wall("light", true)}
-}
+// Which wallpaper light mode gets. "dark" (Liam's choice, 18 Nov) shows the
+// neon night in both modes; "light" brings back the golden-hour dusk.
+const LIGHT_MODE_WALLPAPER = "dark";
 
+const oneWallpaper = LIGHT_MODE_WALLPAPER === "dark";
+const wallpaper = `/*
+ * The wallpaper behind the threads (wallpaper.mjs): ${oneWallpaper ? "a neon night with stars\n * in both modes" : "a neon night with stars\n * in dark mode and a golden-hour dusk in light"}, moving gently unless macOS has Reduce
+ * motion on.
+ */
+${oneWallpaper ? ":root, .light, .dark" : ":root, .light"} {${wall(LIGHT_MODE_WALLPAPER, true)}
+}
+${oneWallpaper ? "" : `
 .dark {${wall("dark", true)}
 }
-
+`}
 @media (prefers-reduced-motion: reduce) {
-  :root, .light {
-    --pn-wall-horizon: ${toUrl(horizon("light", false))};
-  }
+  ${oneWallpaper ? ":root, .light, .dark" : ":root, .light"} {
+    --pn-wall-horizon: ${toUrl(horizon(LIGHT_MODE_WALLPAPER, false))};${LIGHT_MODE_WALLPAPER === "dark" ? `
+    --pn-wall-stars: ${toUrl(stars(false))};` : ""}
+  }${oneWallpaper ? "" : `
 
   .dark {
     --pn-wall-horizon: ${toUrl(horizon("dark", false))};
     --pn-wall-stars: ${toUrl(stars(false))};
-  }
+  }`}
 }`;
 
 const css = [

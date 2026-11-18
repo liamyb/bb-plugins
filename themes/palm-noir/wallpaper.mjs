@@ -167,32 +167,41 @@ export function horizon(mode, live) {
     stripes.push(`<rect x="0" y="${r(y)}" width="1600" height="${r(h)}"/>`);
   }
 
-  // Towers: left and right of the sun, as a skyline on the shore.
-  const towerSet = (x0, widths, heights) => {
+  // Towers: left and right of the sun, as a skyline on the shore. Each
+  // tower's windows sit on a grid inside its own outline, and a steady
+  // scatter of them is lit, so a light can never land in the sky or in a gap.
+  const lit = (i, c, row, salt) => {
+    const v = Math.sin(i * 12.9898 + c * 78.233 + row * 37.719 + salt) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const towerSet = (x0, widths, heights, salt) => {
     let x = x0;
-    let out = "";
+    let rects = "";
+    const wins = [];
     widths.forEach((w, i) => {
-      out += `<rect x="${x}" y="${sea - heights[i]}" width="${w}" height="${heights[i]}"/>`;
+      const h = heights[i];
+      const top = sea - h;
+      rects += `<rect x="${x}" y="${top}" width="${w}" height="${h}"/>`;
+      const cols = Math.max(1, Math.floor((w - 6) / 10));
+      const rows = Math.max(1, Math.floor((h - 14) / 16));
+      const inset = (w - cols * 10 + 5) / 2;
+      for (let c = 0; c < cols; c++) {
+        for (let row = 0; row < rows; row++) {
+          const v = lit(i, c, row, salt);
+          if (v < 0.24) wins.push([r(x + inset + c * 10), top + 8 + row * 16, v]);
+        }
+      }
       x += w + 3;
     });
-    return out;
+    return { rects, wins };
   };
-  const left = towerSet(70, [34, 22, 46, 28, 38, 18, 30], [70, 44, 118, 86, 150, 60, 96]);
-  const right = towerSet(1180, [26, 44, 30, 52, 24, 36, 40], [56, 132, 88, 176, 64, 110, 78]);
-  const windows = [];
-  const seed = [0.13, 0.71, 0.42, 0.88, 0.27, 0.59, 0.05, 0.94, 0.36, 0.67, 0.21, 0.82];
-  const lit = [
-    [120, 200], [128, 230], [160, 175], [168, 205], [246, 160], [254, 190], [300, 230],
-    [1240, 190], [1248, 220], [1312, 150], [1320, 180], [1330, 210], [1290, 240], [1380, 220],
-  ];
-  lit.forEach(([x, y], i) => {
-    const s = seed[i % seed.length];
-    windows.push(
-      `<rect x="${x}" y="${y}" width="5" height="6" fill="${c.windows}">` +
-        step(s > 0.5 ? "1;1;1;0.15;1" : "1;0.2;1;1;1", r(3 + s * 4), r(s * 3)) +
-        `</rect>`,
-    );
-  });
+  const left = towerSet(70, [34, 22, 46, 28, 38, 18, 30], [70, 44, 118, 86, 150, 60, 96], 1.7);
+  const right = towerSet(1180, [26, 44, 30, 52, 24, 36, 40], [56, 132, 88, 176, 64, 110, 78], 4.3);
+  const windows = [...left.wins, ...right.wins].map(([x, y, v]) =>
+    `<rect x="${x}" y="${y}" width="5" height="6" fill="${c.windows}">` +
+      (v < 0.08 ? step(v < 0.04 ? "1;1;1;0.15;1" : "1;0.2;1;1;1", r(3 + v * 40), r(v * 30)) : "") +
+      `</rect>`,
+  );
 
   // Light on the water: bands under the sun, narrowing towards the viewer.
   const glints = [];
@@ -221,7 +230,7 @@ export function horizon(mode, live) {
 </defs>`,
     `<ellipse cx="${sunX}" cy="${sea - 40}" rx="420" ry="230" fill="url(#glow)"/>`,
     `<circle cx="${sunX}" cy="${sea - 20}" r="${sunR}" fill="url(#sun)" mask="url(#cut)"/>`,
-    `<g fill="${c.towers}">${left}${right}</g>${windows.join("")}`,
+    `<g fill="${c.towers}">${left.rects}${right.rects}</g>${windows.join("")}`,
     `<rect x="0" y="${sea}" width="1600" height="${H - sea}" fill="url(#sea)"/>`,
     `<rect x="0" y="${sea}" width="1600" height="2" fill="${c.horizonLine}" opacity="0.7"/>`,
     glints.join(""),

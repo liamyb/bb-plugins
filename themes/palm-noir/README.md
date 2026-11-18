@@ -22,8 +22,9 @@ times and states, and a slice of the sunset for the open chat. Its slide, where 
 wallpaper too.
 
 Behind the threads, and filling New thread, is the same coast as a wallpaper: a striped sun going
-into the sea between two clusters of palms, with towers on the shore. In light mode it's a
-golden-hour dusk; in dark mode it's a neon night with stars. The light on the water shimmers and
+into the sea between two clusters of palms, with towers on the shore. It's a neon night with stars
+in both light and dark mode; for a golden-hour dusk in light mode instead, set
+`LIGHT_MODE_WALLPAPER` to `"light"` in `build.mjs` and rebuild. The light on the water shimmers and
 the windows blink, gently, unless macOS has Reduce motion on. The messages you read stay on a calm
 panel down the middle. If you use [Aura](https://github.com/MateoCerquetella/bb-plugins), its
 wallpaper is hidden while Palm Noir is on, and it returns when you switch back to Sandbar.
