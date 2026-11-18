@@ -1,0 +1,478 @@
+/*
+ * The skin. Everything above this line is Sandbar's layout, copied in by
+ * build.mjs; everything below draws the look on top of it: night-sky bars
+ * with a neon horizon along their foot, titles lit like signs, a sunset
+ * down the rail with a sun, the sea and two palms at its foot, a slice of
+ * the sunset for the open thread, and calm panels to read. It only
+ * restyles; nothing here moves or resizes anything Sandbar's layout places.
+ */
+
+::selection {
+  background: color-mix(in oklab, var(--pn-pink) 75%, transparent);
+  color: #ffffff;
+  text-shadow: none;
+}
+
+/* Scrollbars: a slim pink-to-violet thumb. */
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--pn-pink-soft), var(--pn-violet));
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+  opacity: 0.8;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--pn-pink), var(--pn-violet));
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+/* ---------------------------------------------------------------- Rail */
+
+[data-testid="sidebar-navigation-rail"],
+[data-testid="app-nav-rail"],
+.dark [data-testid="sidebar-navigation-rail"],
+.dark [data-testid="app-nav-rail"] {
+  background: var(--pn-sunset);
+  color: var(--pn-on-night);
+}
+
+[data-testid="sidebar-navigation-rail"] {
+  border-right: 1px solid var(--pn-night-line);
+}
+
+/*
+ * The sun going down over the sea at the foot of the rail, with the name
+ * above it like a sign on a hotel front. The picture comes from scene.mjs.
+ * Decoration only, drawn over nothing and taking no clicks. Windows under
+ * 720px tall leave it off so it never meets the icons.
+ */
+@media (min-height: 720px) {
+  [data-testid="app-nav-rail"] {
+    position: relative;
+
+    &::before {
+      content: "PALM NOIR";
+      position: absolute;
+      bottom: 122px;
+      left: 50%;
+      translate: -50% 0;
+      writing-mode: vertical-rl;
+      rotate: 180deg;
+      font-family: var(--pn-font-display);
+      font-weight: 700;
+      font-style: normal;
+      font-size: 10px;
+      letter-spacing: 0.34em;
+      color: #ffe3f0;
+      text-shadow: var(--pn-neon-pink);
+      pointer-events: none;
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 106px;
+      background: var(--pn-scene) center bottom / 100% auto no-repeat;
+      pointer-events: none;
+    }
+  }
+}
+
+/*
+ * The scene moves while agents work. The Status Strip plugin marks the page
+ * with data-agents-running while any thread is working; the sun's stripes
+ * then drift down, the light on the water shimmers and a few windows blink.
+ * With nothing running, or without the plugin, it's still. Off whenever
+ * macOS has Reduce motion on.
+ */
+@media (min-height: 720px) and (prefers-reduced-motion: no-preference) {
+  html[data-agents-running] [data-testid="app-nav-rail"]::after {
+    background-image: var(--pn-scene-live);
+  }
+}
+
+/* The rail's icons: light on the sky, a teal neon tube for the page you're on. */
+:is([data-testid="app-nav-rail"], [data-testid="sidebar-navigation-rail"]) :is(button, a) {
+  color: var(--pn-on-night);
+}
+
+/*
+ * The rail's foot, where the settings gear sits, is the sidebar's own
+ * surface. In the Mac app that shows the window's background, so the
+ * sidebar itself is the night sky and the list paints its own panel.
+ */
+[data-sidebar="sidebar"] {
+  background: var(--pn-night-deep);
+}
+
+/*
+ * On the phone the strip under the notch is the page's top padding. It's
+ * night sky, so the header looks like it runs to the top of the screen.
+ * The inset is 0 everywhere else, so this draws nothing on a computer.
+ */
+[data-testid="app-layout-content-shell"] {
+  background: linear-gradient(var(--pn-night), var(--pn-night)) top / 100% env(safe-area-inset-top, 0px) no-repeat;
+}
+
+/*
+ * The line down the left of the panes (Sandbar's frame keeps it) is bb's
+ * border colour, which showed as a pale stripe between the rail and the
+ * night-sky bars. It's the night's own line instead.
+ */
+[data-testid="app-layout-root"] > [data-sidebar="inset"] {
+  border-left-color: var(--pn-night-line);
+}
+
+/* --------------------------------------------- Sidebar: top row, footer */
+
+[data-testid="app-sidebar-top-reserve-row"],
+[data-testid="sidebar-footer-body"] {
+  background: var(--pn-night);
+  color: var(--pn-on-night);
+  --foreground: var(--pn-on-night);
+  --muted-foreground: var(--pn-on-night-dim);
+}
+
+[data-testid="app-sidebar-top-reserve-row"] {
+  background:
+    var(--pn-horizon) bottom / 100% 2px no-repeat,
+    linear-gradient(180deg, transparent 45%, rgb(255 61 139 / 0.20) 100%),
+    var(--pn-night);
+}
+
+[data-testid="sidebar-footer-body"] {
+  box-shadow: inset 0 1px 0 var(--pn-night-line);
+}
+
+/* "New thread" as a bold label on the sky. */
+[data-testid="app-sidebar-top-reserve-row"] button span {
+  font-weight: 700;
+}
+
+/* ------------------------------------------ Chrome buttons (bars, rail) */
+
+/* On the sky, buttons are light and get a soft glass pill under the pointer. */
+:is(
+  header:has(> [data-testid="app-page-header-content-row"]),
+  [data-testid="app-nav-rail"],
+  [data-testid="sidebar-navigation-rail"],
+  [data-testid="app-sidebar-top-reserve-row"],
+  [data-testid="sidebar-footer-body"],
+  [data-testid="app-window-title-bar"],
+  [data-testid="app-sidebar-trigger-overlay"],
+  [data-testid="split-workspace-panel-toggle"]
+) :is(button, a[data-sidebar="menu-button"]):not([data-pane-family-label]),
+[data-sidebar="sidebar"] button[aria-label^="Settings"] {
+  color: var(--pn-on-night);
+  border-radius: 8px;
+
+  &:hover {
+    background: rgb(255 255 255 / 0.12);
+    color: #ffffff;
+  }
+
+  /* The page you're on, or a toggle that's on, lights up as a teal tube. */
+  &:is([aria-pressed="true"], [aria-current="page"], [data-state="open"], [aria-expanded="true"], :active) {
+    background: rgb(45 226 230 / 0.14);
+    box-shadow: inset 0 0 0 1px var(--pn-teal), 0 0 10px rgb(45 226 230 / 0.45);
+    color: var(--pn-teal-soft);
+  }
+}
+
+/*
+ * The buttons that float over the page, for the sidebar when it's shut and
+ * for the right-hand panel, can land on the page itself (the home page, the
+ * phone), so each is its own small piece of sky and shows on a light page
+ * as well as a dark one.
+ */
+[data-testid="app-sidebar-trigger-overlay"] button:not(:hover, [aria-expanded="true"]),
+[data-testid="split-workspace-panel-toggle"] button:not(:hover, [aria-expanded="true"]) {
+  background: var(--pn-night);
+  box-shadow: inset 0 0 0 1px var(--pn-night-line);
+}
+
+/* The update badges in the footer: light type on the sky. */
+[data-testid^="sidebar-updates-badge"] {
+  border-color: var(--pn-night-line);
+  color: var(--pn-on-night);
+
+  svg {
+    color: var(--pn-on-night-dim);
+  }
+
+  &:hover {
+    background: rgb(255 255 255 / 0.10);
+  }
+}
+
+/* ------------------------------------------------- Pane and page headers */
+
+/*
+ * The night sky, with the sunset glowing along the foot of the bar and a
+ * neon horizon line under it. --surface-scrim is set to the night here, on
+ * the header itself, so Sandbar's header colour and Pane Attention's tint
+ * (both mixed from it) are night too, and Pane Families' bar and tint
+ * (inset shadows) sit on top. Everything in the bar, including other
+ * plugins' badges and gauges that draw from bb's variables, turns light.
+ */
+header:has(> [data-testid="app-page-header-content-row"]) {
+  --surface-scrim: var(--pn-night);
+  --foreground: var(--pn-on-night);
+  --muted-foreground: var(--pn-on-night-dim);
+  --subtle-foreground: var(--pn-on-night-faint);
+  --primary: var(--pn-teal);
+  --success: #3ee6c4;
+  --warning: #ffb347;
+  --destructive: #ff6b81;
+  --border: var(--pn-night-line);
+  background-image:
+    var(--pn-horizon),
+    linear-gradient(180deg, transparent 40%, rgb(255 61 139 / 0.16) 82%, rgb(255 138 61 / 0.26) 100%);
+  background-size: 100% 2px, 100% 100%;
+  background-position: bottom, 0 0;
+  background-repeat: no-repeat;
+  border-bottom-color: var(--pn-night-line);
+  color: var(--pn-on-night);
+}
+
+/* Pane Attention's title colours, made bright enough for the night. */
+[data-pane-attention] > * > header {
+  --bb-pane-attention-text: var(--pn-teal-soft);
+}
+
+[data-pane-attention="needs-you"] > * > header {
+  --bb-pane-attention-text: #ffc875;
+}
+
+/*
+ * The title is a neon sign: a condensed heavy italic, white-hot with a pink
+ * halo. In a split pane that isn't focused the sign is off.
+ */
+[data-testid="app-page-header-content-row"] > div:first-child > div:first-child > div:first-child {
+  font-family: var(--pn-font-display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1.08;
+  letter-spacing: 0.01em;
+  background: transparent;
+  color: #fff0f7;
+  text-shadow: var(--pn-neon-pink);
+
+  p {
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    color: inherit;
+  }
+}
+
+[data-focused="false"] [data-testid="app-page-header-content-row"] > div:first-child > div:first-child > div:first-child {
+  color: var(--pn-on-night-faint);
+  text-shadow: none;
+}
+
+/*
+ * In a pane's header the buttons on the right sit on glass pills all the
+ * time, so they read as a row of controls against the sky.
+ */
+header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page-header-content-row"] > div:last-child:not(:first-child) button:not([data-pane-family-label]) {
+  background: rgb(255 255 255 / 0.07);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+
+  &:hover {
+    background: rgb(255 255 255 / 0.16);
+  }
+}
+
+/*
+ * Pane families: on the night sky a lighter tint keeps the bar dark enough
+ * to read, and the "↳ parent" label is a light shade of the family's colour.
+ */
+[data-pane-family],
+.dark [data-pane-family] {
+  --bb-pane-family-tint: 14%;
+  --bb-pane-family-text: oklch(0.86 0.11 var(--bb-pane-family-hue));
+}
+
+[data-pane-family-label] {
+  font-weight: 700;
+}
+
+/* ------------------------------------------------- Thread list (sidebar) */
+
+/* The list is a calm panel under the sky. */
+[data-testid="app-sidebar-body"] {
+  background: var(--pn-panel-deep);
+  box-shadow: var(--pn-panel-inset);
+}
+
+[data-sidebar="panel"] li > div:has(> a[data-sidebar-thread-id]) {
+  border-radius: 8px;
+  color: var(--ink);
+
+  > div:first-of-type {
+    font-weight: 700;
+    color: inherit;
+  }
+
+  /* The time since a thread last moved, in teal. */
+  .tabular-nums {
+    font-weight: 700;
+    color: var(--pn-readout);
+    text-shadow: var(--pn-readout-glow);
+  }
+}
+
+/* The open thread: a slice of the sunset, white type. */
+[data-sidebar="panel"] li > div[class~="bg-sidebar-accent"]:has(> a[data-sidebar-thread-id]) {
+  background: var(--pn-select-face);
+  box-shadow: var(--pn-select-ring);
+  color: var(--pn-select-ink);
+
+  .text-muted-foreground,
+  .text-2xs,
+  .text-foreground,
+  .tabular-nums {
+    color: rgb(255 255 255 / 0.9);
+    text-shadow: none;
+  }
+}
+
+/* Section headings ("Pinned", "Inbox") in small bold capitals, in pink. */
+[data-sidebar="panel"] section > h2 > span:first-child {
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pn-readout-hot);
+}
+
+/* --------------------------------------------------------- The timeline */
+
+/* Your messages: a raised card with a pink edge on the left. */
+[data-message-column] [class~="bg-surface-recessed"] {
+  border-color: var(--pn-panel-line);
+  background-color: var(--pn-panel-raised);
+  box-shadow: inset 3px 0 0 var(--pn-pink), var(--pn-card-shadow);
+}
+
+/* ---------------------------------------------------------- The composer */
+
+/* A clean panel with a neon outline in the sunset's colours. */
+form[data-promptbox] {
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background:
+    linear-gradient(var(--pn-panel-raised), var(--pn-panel-raised)) padding-box,
+    linear-gradient(90deg, var(--pn-pink), var(--pn-orange) 45%, var(--pn-teal)) border-box;
+  box-shadow: 0 4px 18px rgb(255 61 139 / 0.12);
+
+  &:focus-within {
+    box-shadow: 0 0 0 3px rgb(255 61 139 / 0.12), 0 4px 22px rgb(255 61 139 / 0.22);
+  }
+}
+
+form[data-promptbox] :is(textarea, [contenteditable="true"]) {
+  caret-color: var(--pn-pink);
+}
+
+/* The changed-files bar above it is a strip of night sky. */
+[data-promptbox-shell] section[aria-label="Thread context before sending"] {
+  border-color: var(--pn-night-line);
+  background: var(--pn-night);
+  color: var(--pn-on-night);
+  --foreground: var(--pn-on-night);
+  --muted-foreground: var(--pn-on-night-dim);
+
+  .text-muted-foreground {
+    color: var(--pn-on-night-dim);
+  }
+
+  .text-diff-added {
+    color: #5ff0b4;
+  }
+
+  .text-diff-removed {
+    color: #ff8fa3;
+  }
+}
+
+/* ----------------------------------------------- Menus, popovers, tips */
+
+[data-radix-popper-content-wrapper] > [role="menu"],
+[data-radix-popper-content-wrapper] > [role="dialog"],
+[data-radix-popper-content-wrapper] > [role="listbox"] {
+  border: 1px solid color-mix(in oklab, var(--pn-pink) 35%, var(--pn-panel-line));
+  box-shadow: 0 10px 28px rgb(40 10 60 / 0.35), 0 0 0 1px rgb(255 61 139 / 0.06);
+}
+
+/* -------------------------------------------------------------- Plugins */
+
+/*
+ * Aura paints a wallpaper behind each panel. Palm Noir has its own scenery,
+ * so the wallpaper is hidden while this theme is on; switch back to Sandbar
+ * and it returns. Aura itself is untouched.
+ */
+.aura-capy-layer {
+  display: none !important;
+}
+
+/*
+ * Switchboard: its rows take the thread list's look. Titles bold, states and
+ * times in teal (pink for replies, amber when something's asking you), and
+ * the open chat a slice of the sunset.
+ */
+.sb-page .sb-title {
+  font-weight: 700;
+}
+
+.sb-page :is(.sb-state, .sb-ask-time) {
+  font-weight: 700;
+  color: var(--pn-readout-dim);
+}
+
+.sb-page .sb-ask-time,
+.sb-page .sb-state:is([data-state="working"], [data-status="working"]) {
+  color: var(--pn-readout);
+  text-shadow: var(--pn-readout-glow);
+}
+
+.sb-page .sb-state:is([data-state="done"], [data-status="reply"]) {
+  color: var(--pn-readout-hot);
+}
+
+.sb-page .sb-state:is([data-state="needs-you"], [data-status="asking"]) {
+  color: var(--pn-readout-amber);
+}
+
+.sb-page .sb-row[data-selected] {
+  background: var(--pn-select-face);
+  box-shadow: var(--pn-select-ring);
+  color: var(--pn-select-ink);
+
+  :is(.sb-title, .sb-state, .sb-hint, .sb-line) {
+    color: var(--pn-select-ink);
+    text-shadow: none;
+  }
+}
+
+.sb-page .sb-group-head {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pn-readout-hot);
+}

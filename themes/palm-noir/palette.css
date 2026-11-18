@@ -1,0 +1,214 @@
+/*
+ * Palette: a coast at dusk. The bars and the rail are the night sky over a
+ * neon sunset, the same in both modes, with titles lit like neon signs.
+ * The panels you read are calm: a warm shell-white in light mode, deep
+ * violet night in dark mode. Hot pink is the accent, teal is for times and
+ * things that are on, and orange and yellow come from the sun.
+ * The --pn-* variables are the skin's own; the rest are bb's tokens.
+ */
+
+:root, .light, .dark {
+  /* Skin: the night sky the bars and the rail are made of */
+  --pn-night: #1b1035;
+  --pn-night-deep: #120a26;
+  --pn-night-rise: #2a1550;
+  --pn-night-line: #3b2468;
+  --pn-on-night: #f7ecff;
+  --pn-on-night-dim: #c9b5e6;
+  --pn-on-night-faint: #b3a1d4;
+
+  /* Skin: neon */
+  --pn-pink: #ff3d8b;
+  --pn-pink-soft: #ff8cc0;
+  --pn-orange: #ff8a3d;
+  --pn-sun: #ffd166;
+  --pn-teal: #2de2e6;
+  --pn-teal-soft: #a8fbff;
+  --pn-violet: #a259ff;
+
+  /* The sunset, top to bottom, for the rail */
+  --pn-sunset: linear-gradient(180deg, #120a26 0%, #1f0f40 32%, #4b1665 56%, #a3246f 74%, #f0466e 88%, #ff7a4a 100%);
+  /* The horizon: a neon line in the sunset's colours */
+  --pn-horizon: linear-gradient(90deg, var(--pn-pink), var(--pn-orange) 38%, var(--pn-sun) 52%, var(--pn-teal));
+  /* The selected row: a slice of the sunset */
+  --pn-select-face: linear-gradient(90deg, #e8327f 0%, #ff5a5f 55%, #ff8a3d 100%);
+  --pn-select-ring: inset 0 0 0 1px rgb(255 255 255 / 0.22), 0 3px 12px rgb(255 61 139 / 0.35);
+  --pn-select-ink: #ffffff;
+
+  /* Neon type: a white-hot core with a coloured halo */
+  --pn-neon-pink: 0 0 1px #ff9cc9, 0 0 5px rgb(255 61 139 / 0.75), 0 0 12px rgb(255 61 139 / 0.35);
+  --pn-neon-teal: 0 0 1px #c8fdff, 0 0 6px rgb(45 226 230 / 0.85), 0 0 12px rgb(45 226 230 / 0.45);
+
+  /* Type: a condensed heavy italic for titles, like a sign on the strip */
+  --pn-font-display: "Avenir Next Condensed", "Futura", "Helvetica Neue", "Arial Narrow", sans-serif;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-3xl: 16px;
+}
+
+:root, .light {
+  color-scheme: light;
+
+  /* Skin: the panels you read, warm shell-white */
+  --pn-panel: #fffaf6;
+  --pn-panel-deep: #fbefea;
+  --pn-panel-raised: #ffffff;
+  --pn-panel-line: #edd5cd;
+  --pn-panel-inset: inset 0 1px 2px rgb(60 20 50 / 0.10);
+  --pn-card-shadow: 0 1px 2px rgb(60 20 50 / 0.08);
+
+  /* Skin: coloured text printed on a panel (times, states) */
+  --pn-readout: #0b6f7a;
+  --pn-readout-dim: #6b7f86;
+  --pn-readout-hot: #c41d63;
+  --pn-readout-amber: #a34d00;
+  --pn-readout-glow: none;
+
+  /* bb tokens */
+  --canvas: #fffaf6;
+  --ink: #23193a;
+  --primary: #c41d63;
+  --primary-foreground: #ffffff;
+  --sidebar: var(--pn-panel-deep);
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: #f5ddd6;
+  --sidebar-border: var(--pn-panel-line);
+  --surface-scrim: color-mix(in oklab, var(--pn-panel) 92%, transparent);
+  --secondary: #f7e8e3;
+  --accent: #f7e8e3;
+  --muted: #f3e1db;
+  --state-hover: color-mix(in oklab, var(--pn-pink) 8%, transparent);
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 56%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 62%, var(--canvas));
+  --timeline-accent: #c41d63;
+  --file-accent: #b0480c;
+  --destructive: #c62d3c;
+  --destructive-text: #a8222f;
+  --warning: #d97706;
+  --warning-text: #8f4300;
+  --attention: #f59e0b;
+  --success: #0b7a6a;
+  --diff-added: #0b7a55;
+  --diff-removed: #c62d3c;
+  --pr-merged: #7a3fd8;
+
+  --ansi-0: #23193a;
+  --ansi-1: #c62d3c;
+  --ansi-2: #0b7a55;
+  --ansi-3: #9a5a00;
+  --ansi-4: #3a4fc4;
+  --ansi-5: #b0237a;
+  --ansi-6: #0b6f7a;
+  --ansi-7: #e9dcd8;
+  --ansi-8: #6b5f7a;
+  --ansi-9: #e0475a;
+  --ansi-10: #13976b;
+  --ansi-11: #c27a00;
+  --ansi-12: #5a6ee0;
+  --ansi-13: #d63a96;
+  --ansi-14: #138c98;
+  --ansi-15: #ffffff;
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #ffffff;
+  --ansi-bg-fg-2: #ffffff;
+  --ansi-bg-fg-3: #ffffff;
+  --ansi-bg-fg-4: #ffffff;
+  --ansi-bg-fg-5: #ffffff;
+  --ansi-bg-fg-6: #ffffff;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #ffffff;
+  --ansi-bg-fg-10: #ffffff;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #ffffff;
+  --ansi-bg-fg-13: #ffffff;
+  --ansi-bg-fg-14: #ffffff;
+  --ansi-bg-fg-15: #000000;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Skin: the panels you read, deep violet night */
+  --pn-panel: #160d2c;
+  --pn-panel-deep: #110a23;
+  --pn-panel-raised: #21153d;
+  --pn-panel-line: #34245a;
+  --pn-panel-inset: inset 0 1px 3px rgb(0 0 0 / 0.55);
+  --pn-card-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 0 rgb(0 0 0 / 0.4);
+
+  /* Skin: coloured text printed on a panel (times, states) */
+  --pn-readout: var(--pn-teal);
+  --pn-readout-dim: #8f7fb0;
+  --pn-readout-hot: var(--pn-pink-soft);
+  --pn-readout-amber: #ffc164;
+  --pn-readout-glow: 0 0 6px rgb(45 226 230 / 0.45);
+
+  /* bb tokens */
+  --canvas: #160d2c;
+  --ink: #f4ecff;
+  --primary: #ff4f9a;
+  --primary-foreground: #1a0717;
+  --sidebar: var(--pn-panel-deep);
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: #25173f;
+  --sidebar-border: var(--pn-panel-line);
+  --surface-scrim: color-mix(in oklab, var(--pn-panel) 92%, transparent);
+  --secondary: #22163d;
+  --accent: #22163d;
+  --muted: #261a42;
+  --state-hover: color-mix(in oklab, var(--pn-pink) 12%, transparent);
+  --muted-foreground: color-mix(in oklch, var(--ink) 70%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 56%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 62%, var(--canvas));
+  --timeline-accent: #ff6fae;
+  --file-accent: #ffb35c;
+  --destructive: #ff4d6d;
+  --destructive-text: #ff8fa3;
+  --warning: #ffb347;
+  --warning-text: #ffc875;
+  --attention: #ffcf5c;
+  --success: #3ee6c4;
+  --diff-added: #3ee6a0;
+  --diff-removed: #ff6b7d;
+  --pr-merged: #c39bff;
+
+  --ansi-0: #160d2c;
+  --ansi-1: #ff4d6d;
+  --ansi-2: #3ee6a0;
+  --ansi-3: #ffd166;
+  --ansi-4: #7a8cff;
+  --ansi-5: #ff4f9a;
+  --ansi-6: #2de2e6;
+  --ansi-7: #d9cdee;
+  --ansi-8: #6f5f92;
+  --ansi-9: #ff8fa3;
+  --ansi-10: #8affc9;
+  --ansi-11: #ffe49a;
+  --ansi-12: #a9b5ff;
+  --ansi-13: #ff9ccb;
+  --ansi-14: #a8fbff;
+  --ansi-15: #fbf7ff;
+  --ansi-bg-fg-0: #ffffff;
+  --ansi-bg-fg-1: #000000;
+  --ansi-bg-fg-2: #000000;
+  --ansi-bg-fg-3: #000000;
+  --ansi-bg-fg-4: #000000;
+  --ansi-bg-fg-5: #000000;
+  --ansi-bg-fg-6: #000000;
+  --ansi-bg-fg-7: #000000;
+  --ansi-bg-fg-8: #ffffff;
+  --ansi-bg-fg-9: #000000;
+  --ansi-bg-fg-10: #000000;
+  --ansi-bg-fg-11: #000000;
+  --ansi-bg-fg-12: #000000;
+  --ansi-bg-fg-13: #000000;
+  --ansi-bg-fg-14: #000000;
+  --ansi-bg-fg-15: #000000;
+}
