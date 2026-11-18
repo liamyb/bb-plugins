@@ -319,18 +319,37 @@ header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page
  * thread: the sky stretches to any size, the sun, sea and towers sit along
  * the bottom, and a palm cluster stands at each side. A New thread page in
  * a split already sits on the split's wallpaper, so it isn't given a second.
+ * Switchboard's slide, where its chats open, gets it too.
  */
 :is(
   [id="thread-detail-timeline-panel"],
   [id="split-workspace-main-panel"],
-  [id="root-compose-main-panel"]:not([id="split-workspace-main-panel"] *)
+  [id="root-compose-main-panel"]:not([id="split-workspace-main-panel"] *),
+  .sb-page .sb-slide-body,
+  .sb-page .sb-blank
 ) {
   background:
-    var(--pn-wall-left) left bottom / auto 88% no-repeat,
-    var(--pn-wall-right) right bottom / auto 72% no-repeat,
-    var(--pn-wall-horizon) center bottom / max(100%, 1100px) auto no-repeat,
+    var(--pn-wall-left) left bottom var(--pn-wall-foot, 0px) / auto calc(88% - var(--pn-wall-foot, 0px)) no-repeat,
+    var(--pn-wall-right) right bottom var(--pn-wall-foot, 0px) / auto calc(72% - var(--pn-wall-foot, 0px)) no-repeat,
+    var(--pn-wall-horizon) center bottom var(--pn-wall-foot, 0px) / max(100%, 1100px) auto no-repeat,
     var(--pn-wall-stars) left top / 640px auto repeat-x,
     var(--pn-wall-sky);
+}
+
+/*
+ * In Switchboard's slide the composer's bar runs the full width and stays
+ * solid, so the picture sits on top of it rather than behind it, and bb's
+ * fade into the bar only covers the column of messages.
+ */
+.sb-page .sb-slide-body {
+  --pn-wall-foot: 205px;
+
+  [data-scroll-footer] > .bg-background > [data-overflow-fade] {
+    left: 50%;
+    right: auto;
+    width: min(760px, 100%);
+    transform: translateX(-50%);
+  }
 }
 
 /*
@@ -338,7 +357,7 @@ header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page
  * composer's strip are the theme's panel colour, with the wallpaper beside
  * them. The same shape Aura uses, so it looks alike with or without Aura.
  */
-:is([id="thread-detail-timeline-panel"], [id="split-workspace-main-panel"]) {
+:is([id="thread-detail-timeline-panel"], [id="split-workspace-main-panel"], .sb-page .sb-slide-body) {
   .thread-scrollbar:has(> div > .mx-auto),
   [data-scroll-footer] > .bg-background:has(> .mx-auto) {
     background-color: transparent;
@@ -361,7 +380,7 @@ header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page
  * picture, so it gets a small frosted panel of its own and never lands on
  * a palm trunk unreadably.
  */
-:is([id="split-workspace-main-panel"], [id="root-compose-main-panel"]) [data-new-thread-footer] {
+:is([id="split-workspace-main-panel"], [id="root-compose-main-panel"], .sb-page .sb-slide-body) [data-new-thread-footer] {
   padding-block: 5px;
   border: 1px solid var(--pn-panel-line);
   border-radius: 11px;

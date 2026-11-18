@@ -18,7 +18,8 @@ shimmers and a few windows blink. It's still when nothing runs, and whenever mac
 motion on. Palm Noir doesn't turn on the strip itself.
 
 [Switchboard](../../plugins/switchboard/)'s rows take the thread list's look: bold titles, teal
-times and states, and a slice of the sunset for the open chat.
+times and states, and a slice of the sunset for the open chat. Its slide, where chats open, has the
+wallpaper too.
 
 Behind the threads, and filling New thread, is the same coast as a wallpaper: a striped sun going
 into the sea between two clusters of palms, with towers on the shore. In light mode it's a
