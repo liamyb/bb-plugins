@@ -1,6 +1,6 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings, its Waiting view (with Still with you) and rail badge, its Ask the desk button and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, committing from the slide or where bb's Commit button went, why a thread you've already read is still in Waiting under Still with you, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view (with Still with you) and rail badge, its Ask the desk button (a box that sends the front desk a request without leaving your chat) and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, sending the desk a request from Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, committing from the slide or where bb's Commit button went, why a thread you've already read is still in Waiting under Still with you, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
@@ -101,8 +101,17 @@ thread show its state faded (`data-repeat`).
 
 Today's desk is `findDesk` in `src/waiting.ts`: the pinned, visible, top-level, active thread in
 the `frontDesk` section with the latest `pinnedAt`, or with none pinned the newest by
-`createdAt`. Ask the desk opens it in the slide (marking it read) with the composer focused; the
-+ beside it is New chat. With no desk, the main button is New chat.
+`createdAt`. Ask the desk opens `AskDeskPopup` (pure parts in `src/ask.ts`): a compose card
+under the button. Enter sends the text and any attachments to the desk with
+`sdk.threads.send({ threadId, input, mode: "queue-if-active" })`
+(`POST /api/v1/threads/<id>/send`), so an idle desk starts a turn and a busy one queues it;
+the toast says which. The desk is resolved when you send. Pasted, dropped or picked files go up
+first with `sdk.projects.attachments.upload` to the desk's project
+(`POST /api/v1/projects/<id>/attachments`) and are sent as `localImage` or `localFile` parts;
+Send waits until every upload has finished, and a failed one has to be removed. Escape or a
+click outside closes the card and keeps the draft in page state (not across a reload). "Open
+the desk" in the card opens the desk thread in the slide (marking it read), the button's old
+behaviour. The + beside the button is New chat. With no desk, the main button is New chat.
 
 The gauge is the nav panel's `headerContent` (right of the title bar), from
 `sdk.system.usageLimits()` (`GET /api/v1/system/usage-limits`): the `five-hour` and `weekly`
@@ -329,3 +338,6 @@ window.
   widened, and not after bb restarts. Drag it narrow by hand.
 - Ask the desk opens New chat instead: no active top-level thread in the `frontDesk` section
   (`bb thread list --section <id> --json`).
+- Ask the desk's box says "It didn't send": the send was refused (the message is in the error);
+  the text and files stay in the box. A file with a red border didn't upload: hover it for why,
+  then remove it to send.

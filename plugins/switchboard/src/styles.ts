@@ -457,6 +457,136 @@ export const CSS = `
   font-size: 1.125rem;
 }
 
+/* Ask the desk's popup: a compose card under the button. */
+.sb-deskpop {
+  position: fixed;
+  z-index: 2147482000;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius, 0.5rem) * 0.875);
+  background: var(--popover, var(--card, var(--background, var(--canvas))));
+  color: var(--popover-foreground, var(--foreground, inherit));
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 0.2);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  white-space: normal;
+}
+.sb-deskpop-head {
+  display: grid;
+  gap: 0.0625rem;
+}
+.sb-deskpop-title {
+  font-weight: 600;
+}
+.sb-deskpop-note {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.sb-deskpop-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 5.5rem;
+  max-height: 16rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius, 0.5rem) * 0.75);
+  background: var(--background, var(--canvas));
+  color: inherit;
+  font: inherit;
+  resize: none;
+  field-sizing: content;
+}
+.sb-deskpop-text:focus {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -1px;
+}
+.sb-deskpop-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sb-deskpop-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 3rem;
+  max-width: 10rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius, 0.5rem) * 0.625);
+  overflow: hidden;
+}
+.sb-deskpop-file img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 10rem;
+  object-fit: cover;
+}
+.sb-deskpop-file-name {
+  padding: 0 1.5rem 0 0.5rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-deskpop-file[data-status="uploading"] {
+  opacity: 0.55;
+}
+.sb-deskpop-file[data-status="failed"] {
+  border-color: var(--destructive, #c0392b);
+}
+.sb-deskpop-file-x {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: default;
+}
+.sb-deskpop-error {
+  color: var(--destructive, #c0392b);
+  font-size: 0.75rem;
+}
+.sb-deskpop-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.sb-deskpop-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: default;
+}
+.sb-deskpop-link:hover {
+  color: var(--foreground, inherit);
+}
+.sb-deskpop .sb-deskpop-attach {
+  border: 1px solid var(--border);
+  font-size: 1.125rem;
+}
+
 /* The usage gauge on the right of the title bar. */
 .sb-usage {
   display: inline-flex;

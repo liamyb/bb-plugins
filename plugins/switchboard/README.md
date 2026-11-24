@@ -4,8 +4,9 @@ A compact view of the chats you've got going in bb. It lists the threads open in
 panes, in any bb window, with a state word against each one (Needs you, Working, Done, Idle),
 and clicking a row slides bb's own chat open in place so you can read and reply without leaving
 the view. A Waiting view gathers every thread that's waiting on you, in every section, and the
-rail icon counts the ones asking you or with an update. An Ask the desk button opens today's
-front desk thread, and the + beside it starts a blank chat on your project checkout. The title
+rail icon counts the ones asking you or with an update. An Ask the desk button opens a small
+box for a request to today's front desk, which starts on it while you stay in the chat you're
+in, and the + beside it starts a blank chat on your project checkout. The title
 bar shows how much of your plan's session and week you've used. In the small window, bb's side
 panel slides out beside the list rather than covering it, links to other threads open in
 the slide, and a Commit button at the top of the slide commits the chat's checkout when it has
@@ -232,11 +233,17 @@ console and kept in `window.__switchboardLog`.
 
 ## Ask the desk, and New chat
 
-**Ask the desk** slides today's front desk thread open with its composer focused, so an ask
-goes to the desk to route, with attachments and voice as usual. Today's desk is the pinned
-thread in the `frontDesk` section (the newest pin if there's more than one, or with none pinned
-the section's newest thread), so it follows the morning run's new desk each day without a fixed
-id. Opening it marks it read, like any row in Waiting.
+**Ask the desk** opens a small box under the button. Type a request and press Enter (Shift+Enter
+for a new line) and it goes to today's front desk as your own message, so the desk starts on it
+while you stay in the chat you were working in. If the desk is busy, the message queues and it
+picks it up when it finishes, rather than being added to whatever it's doing. Paste or drop a
+screenshot (or use the + in the box) to attach it. Escape or a click outside closes the box and
+keeps what you'd typed. "Open the desk" in the box opens the desk thread in the slide instead,
+as the button used to.
+
+Today's desk is the pinned thread in the `frontDesk` section (the newest pin if there's more
+than one, or with none pinned the section's newest thread), worked out when you send, so it
+follows the morning run's new desk each day without a fixed id.
 
 **The + beside it** is New chat: it slides open bb's own New thread composer, seeded with the
 project and environment from the settings below, so a chat started here lands where your other
@@ -298,7 +305,7 @@ Switchboard page reads for itself, and nothing reads while no page is open.
 | `newChatProjectId` | `proj_m7g3w6c5r8` | The project the New chat composer starts on. Set it to yours (`bb project list`), or empty for the composer's own choice |
 | `newChatEnvironmentId` | `env_82jgfihfwx` | The environment the New chat composer starts on, normally your project checkout (`bb environment list --project <id>`). Empty for the composer's own choice |
 | `paneReportTtlSeconds` | `120` | How long a window's pane report counts after its last heartbeat (10 to 600) |
-| `frontDesk` | `Front desk` | The section (name or id) whose pinned thread Ask the desk opens and Today's asks starts with. Empty: a plain New chat button and no desk line |
+| `frontDesk` | `Front desk` | The section (name or id) whose pinned thread Ask the desk sends to and Today's asks starts with. Empty: a plain New chat button and no desk line |
 | `relaySections` | `Front desk` | Section names or ids, comma-separated, whose threads pass on your asks: a reply to a turn one of them started counts as a reply, not FYI, and so does one from a thread whose sending turn was yours, up to three threads back |
 | `askLedgerFolder` | `automation/front-desk/ledger` | Where the front desk's daily ledger lives (`<YYYY-MM-DD>.jsonl`). A relative path is read from the `newChatEnvironmentId` checkout. Empty: no Today's asks |
 | `railBadge` | `true` | The count of threads asking you or with an update on the rail icon |

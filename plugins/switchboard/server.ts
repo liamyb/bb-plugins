@@ -155,7 +155,7 @@ export default function switchboard(bb: BbPluginApi): void {
       type: "string",
       label: "Ask the desk: front desk section",
       description:
-        "The section (name or id) whose pinned thread is today's front desk. The Ask the desk button opens it, and it heads the list of today's asks; a + beside the button starts a blank chat. With no pin, the section's newest thread. Empty, or no thread there: the button is a plain New chat.",
+        "The section (name or id) whose pinned thread is today's front desk. The Ask the desk button sends it a request from a small box without leaving your chat, and it heads the list of today's asks; a + beside the button starts a blank chat. With no pin, the section's newest thread. Empty, or no thread there: the button is a plain New chat.",
       default: "Front desk",
     },
     relaySections: {

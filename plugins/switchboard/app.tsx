@@ -13,8 +13,9 @@
 //   Updates, Still with you, FYI, Working), with today's front desk and its
 //   asks under them. A reply that asks you something (src/asks.ts) is in
 //   Asking you; one that only tells you something is an Update.
-//   Clicking a row slides bb's ThreadChat open. Ask the desk opens today's
-//   front desk thread there, and the + beside it starts a chat with bb's New
+//   Clicking a row slides bb's ThreadChat open. Ask the desk opens a box
+//   that sends today's front desk a request without leaving your chat
+//   (src/ask.ts), and the + beside it starts a chat with bb's New
 //   thread composer. A thread's running workflows show as lines under it,
 //   read from its timeline while bb counts any.
 // - The rail icon carries a count of the threads asking you or with a reply,
@@ -32,6 +33,8 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type Dispatch,
+  type SetStateAction,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
 import { toast } from "sonner";
@@ -90,6 +93,7 @@ import {
   type WorkflowRun,
 } from "./src/current";
 import { FINAL_EVENT_LIMIT, FINAL_EVENT_TYPES, finalMessage, replyAsk, type ReplyAsk } from "./src/asks";
+import { canSendToDesk, deskInput, sendBlocker, sentNote, type DeskAttachment } from "./src/ask";
 import {
   ASK_STATUS_LABEL,
   GROUP_LABEL,
@@ -3032,15 +3036,26 @@ function SwitchboardPage() {
     setSelection({ kind: "new" });
     setSlideOpen(true);
   }, []);
-  // Ask the desk: today's desk in the slide, its composer focused once the
+  // Open the desk: today's desk in the slide, its composer focused once the
   // slide settles, read like any thread opened from Waiting.
-  const askDesk = useCallback(() => {
+  const openDesk = useCallback(() => {
     if (deskId === null) {
       openNew();
       return;
     }
     openFromWaiting(deskId, rowsById.get(deskId)?.group ?? null);
   }, [deskId, openNew, openFromWaiting, rowsById]);
+  // Ask the desk: a popup to send it a request without leaving the chat
+  // you're in (AskDeskPopup). The desk is whichever is today's when you send,
+  // and the draft stays while the popup's closed.
+  const [askOpen, setAskOpen] = useState(false);
+  const [deskDraft, setDeskDraft] = useState<DeskDraft>(EMPTY_DESK_DRAFT);
+  const askButtonRef = useRef<HTMLButtonElement>(null);
+  const closeAsk = useCallback(() => setAskOpen(false), []);
+  const openDeskFromAsk = useCallback(() => {
+    setAskOpen(false);
+    openDesk();
+  }, [openDesk]);
   const closeSlide = useCallback(() => {
     setSlideOpen(false);
     setTrail([]);
@@ -3369,14 +3384,28 @@ function SwitchboardPage() {
           ) : (
             <>
               <button
+                ref={askButtonRef}
                 type="button"
                 className="sb-button"
                 data-primary=""
-                title={`Open ${desk.title} to ask it something`}
-                onClick={askDesk}
+                aria-haspopup="dialog"
+                aria-expanded={askOpen}
+                title={`Ask ${desk.title} something without leaving this chat`}
+                onClick={() => setAskOpen((open) => !open)}
               >
                 Ask the desk
               </button>
+              {askOpen ? (
+                <AskDeskPopup
+                  desk={desk}
+                  projectId={byId.get(desk.id)?.projectId ?? null}
+                  anchor={askButtonRef.current}
+                  draft={deskDraft}
+                  setDraft={setDeskDraft}
+                  onClose={closeAsk}
+                  onOpenDesk={openDeskFromAsk}
+                />
+              ) : null}
               <button
                 type="button"
                 className="sb-icon-button sb-new"
@@ -3656,6 +3685,292 @@ function CommitButton({ thread }: { thread: PluginSidebarThread | null }) {
 }
 
 /** A small ring filled to `percent`. */
+/** A file in the desk popup's draft: uploading, uploaded, or failed. */
+interface DeskFile {
+  key: string;
+  name: string;
+  /** An object URL for an image's thumbnail, revoked when it leaves the draft. */
+  preview: string | null;
+  status: "uploading" | "ready" | "failed";
+  attachment: DeskAttachment | null;
+  error?: string;
+}
+
+/** What you've typed for the desk, kept while the popup's closed. */
+interface DeskDraft {
+  text: string;
+  files: DeskFile[];
+}
+
+const EMPTY_DESK_DRAFT: DeskDraft = { text: "", files: [] };
+
+function dropPreviews(files: readonly DeskFile[]): void {
+  for (const file of files) if (file.preview !== null) URL.revokeObjectURL(file.preview);
+}
+
+let deskFileKey = 0;
+
+interface AskDeskPopupProps {
+  desk: { id: string; title: string };
+  /** The desk's project, for uploads; null when it isn't loaded. */
+  projectId: string | null;
+  anchor: HTMLElement | null;
+  draft: DeskDraft;
+  setDraft: Dispatch<SetStateAction<DeskDraft>>;
+  onClose(): void;
+  onOpenDesk(): void;
+}
+
+/**
+ * Ask the desk's popup (src/ask.ts): a small compose card under the button.
+ * What you type goes to today's desk as your own message, queued if it's
+ * busy, and you stay in the chat you were in. Paste or drop a screenshot to
+ * attach it. Escape or a click outside closes it and keeps the draft.
+ */
+function AskDeskPopup({ desk, projectId, anchor, draft, setDraft, onClose, onOpenDesk }: AskDeskPopupProps) {
+  const sdk = useSdk();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const pickerRef = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Under the button, as wide as the window allows.
+  useLayoutEffect(() => {
+    if (anchor === null) return;
+    const measure = () => {
+      const box = anchor.getBoundingClientRect();
+      const width = Math.min(416, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8));
+      setPlace({ top: Math.round(box.bottom + 6), left: Math.round(left), width: Math.round(width) });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [anchor]);
+
+  // Focus the box with the caret at the end, once it's placed (a hidden box
+  // can't take focus).
+  const placed = place !== null;
+  useEffect(() => {
+    const text = textRef.current;
+    if (!placed || text === null) return;
+    text.focus();
+    text.setSelectionRange(text.value.length, text.value.length);
+  }, [placed]);
+
+  // A click outside closes it; the button toggles it itself.
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target === null || cardRef.current?.contains(target) || anchor?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [anchor, onClose]);
+
+  const attach = useCallback(
+    (files: readonly File[]) => {
+      if (files.length === 0) return;
+      if (projectId === null) {
+        setError("The desk's project hasn't loaded, so files can't be attached yet.");
+        return;
+      }
+      setError(null);
+      const added = files.map((file) => ({
+        file,
+        entry: {
+          key: `f${++deskFileKey}`,
+          name: file.name.length > 0 ? file.name : "file",
+          preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+          status: "uploading" as const,
+          attachment: null,
+        } satisfies DeskFile,
+      }));
+      setDraft((before) => ({ ...before, files: [...before.files, ...added.map((item) => item.entry)] }));
+      for (const { file, entry } of added) {
+        sdk.projects.attachments
+          .upload({ projectId, clientFile: file, ...(file.type.length > 0 ? { mimeType: file.type } : {}) })
+          .then((attachment) => {
+            setDraft((before) => ({
+              ...before,
+              files: before.files.map((item) =>
+                item.key === entry.key ? { ...item, status: "ready", attachment } : item,
+              ),
+            }));
+          })
+          .catch((reason: unknown) => {
+            setDraft((before) => ({
+              ...before,
+              files: before.files.map((item) =>
+                item.key === entry.key
+                  ? { ...item, status: "failed", error: reason instanceof Error ? reason.message : String(reason) }
+                  : item,
+              ),
+            }));
+          });
+      }
+    },
+    [projectId, sdk, setDraft],
+  );
+
+  const remove = useCallback(
+    (key: string) => {
+      setDraft((before) => {
+        dropPreviews(before.files.filter((item) => item.key === key));
+        return { ...before, files: before.files.filter((item) => item.key !== key) };
+      });
+    },
+    [setDraft],
+  );
+
+  const blocker = sendBlocker(draft.text, draft.files);
+  const send = useCallback(async () => {
+    if (sending || !canSendToDesk(draft.text, draft.files)) return;
+    setSending(true);
+    setError(null);
+    try {
+      const attachments = draft.files.flatMap((item) => (item.attachment === null ? [] : [item.attachment]));
+      const result = await sdk.threads.send({
+        threadId: desk.id,
+        input: deskInput(draft.text, attachments),
+        mode: "queue-if-active",
+      });
+      const note = sentNote(result.delivery, desk.title);
+      toast.success(note.title, note.description === undefined ? undefined : { description: note.description });
+      dropPreviews(draft.files);
+      setDraft(EMPTY_DESK_DRAFT);
+      onClose();
+    } catch (reason) {
+      setError(
+        `It didn't send: ${reason instanceof Error ? reason.message : String(reason)}. Your text is still here.`,
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [sending, draft, sdk, desk, setDraft, onClose]);
+
+  return (
+    <div
+      ref={cardRef}
+      className="sb-deskpop"
+      role="dialog"
+      aria-label={`Ask ${desk.title}`}
+      style={place === null ? { visibility: "hidden" } : { top: place.top, left: place.left, width: place.width }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+          anchor?.focus();
+        }
+      }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (event.dataTransfer.files.length === 0) return;
+        event.preventDefault();
+        attach([...event.dataTransfer.files]);
+      }}
+    >
+      <div className="sb-deskpop-head">
+        <span className="sb-deskpop-title">Ask {desk.title}</span>
+        <span className="sb-deskpop-note">It starts on it while you stay here.</span>
+      </div>
+      <textarea
+        ref={textRef}
+        className="sb-deskpop-text"
+        value={draft.text}
+        placeholder="What should the desk pick up? Paste a screenshot if it helps."
+        aria-label="Your request for the desk"
+        onChange={(event) => setDraft((before) => ({ ...before, text: event.target.value }))}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            void send();
+          }
+        }}
+        onPaste={(event) => {
+          const files = [...event.clipboardData.files];
+          if (files.length === 0) return;
+          // Text with it (a copied cell, say) still pastes as text.
+          if (event.clipboardData.getData("text/plain").length === 0) event.preventDefault();
+          attach(files);
+        }}
+      />
+      {draft.files.length > 0 ? (
+        <ul className="sb-deskpop-files" aria-label="Attached">
+          {draft.files.map((item) => (
+            <li
+              key={item.key}
+              className="sb-deskpop-file"
+              data-status={item.status}
+              title={item.status === "failed" ? `${item.name} didn't upload: ${item.error ?? "unknown error"}` : item.name}
+            >
+              {item.preview !== null ? (
+                <img src={item.preview} alt={item.name} />
+              ) : (
+                <span className="sb-deskpop-file-name">{item.name}</span>
+              )}
+              <button
+                type="button"
+                className="sb-deskpop-file-x"
+                aria-label={`Remove ${item.name}`}
+                onClick={() => remove(item.key)}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {error !== null ? (
+        <div className="sb-deskpop-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className="sb-deskpop-foot">
+        <button type="button" className="sb-deskpop-link" onClick={onOpenDesk} title={`Open ${desk.title} in the slide`}>
+          Open the desk
+        </button>
+        <span className="sb-toolbar-spacer" />
+        <input
+          ref={pickerRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            attach([...(event.target.files ?? [])]);
+            event.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="sb-icon-button sb-deskpop-attach"
+          aria-label="Attach a file"
+          title="Attach a file (or paste or drop one)"
+          disabled={projectId === null}
+          onClick={() => pickerRef.current?.click()}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="sb-button"
+          data-primary=""
+          disabled={sending || blocker !== null}
+          title={blocker ?? "Send (Enter). Shift+Enter for a new line"}
+          onClick={() => void send()}
+        >
+          {sending ? "Sending" : "Send"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function UsageRing({ percent }: { percent: number }) {
   const radius = 5.5;
   const length = 2 * Math.PI * radius;
