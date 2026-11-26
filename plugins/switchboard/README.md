@@ -10,7 +10,7 @@ in, and the + beside it starts a blank chat on your project checkout. The title
 bar shows how much of your plan's session and week you've used. In the small window, bb's side
 panel slides out beside the list rather than covering it, links to other threads open in
 the slide, and a Commit button at the top of the slide commits the chat's checkout when it has
-changes.
+changes. A globe button on the side panel opens the tab you're on in your web browser.
 
 It's made for a small second bb window: Cmd+Shift+N for a new window, click the Switchboard
 icon in the rail, and size it to about 500 by 800. It works as a page in the main window too,
@@ -203,6 +203,18 @@ documents and opens this one's, or closes the panel, shrinking the window, when 
 With it closed, nothing opens. Opening it on a chat shows that chat's documents. An agent's file
 waits on its bar until you press Show. With the list showing, nothing moves. Tabs already in the panel before Switchboard started
 following belong to no chat and close the first time a chat's documents are shown.
+
+**Open in browser.** A globe button sits with bb's own buttons on the right of the panel's row of
+tabs, and opens the tab you're on in your web browser. A web page opens at its address. A file
+opens through bb's own server, at the address bb's panel reads it from, so the browser shows it as
+it is: web pages, PDFs and pictures look as they do in the panel, and Markdown and other text show
+as plain text. Hovering the button says what it'll open. It's there whenever Switchboard's panel
+is on screen, in the small window or the main one, and not for a tab with nothing to open (a
+terminal, a new tab, or a file outside a checkout or a thread's storage). bb's Mac app hands the
+page's `window.open` to your default browser; in a web browser it opens a new tab. bb has no
+place for a plugin's button in that row, so Switchboard puts it there itself, finding the row by
+bb's own element name (`thread-secondary-panel-top-chrome`), which isn't part of the plugin SDK:
+if bb renames it, the button doesn't show.
 
 Closing the panel (its button, Cmd+J or the last tab's ×) shrinks the window back to its old
 width and place, unless you've resized the window by hand in the meantime, which counts as

@@ -37,9 +37,11 @@ import {
   type SetStateAction,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   definePluginApp,
+  experimental_Icon as Icon,
   ThreadChat,
   ThreadTitle,
   experimental_NewThreadComposer as NewThreadComposer,
@@ -94,6 +96,7 @@ import {
 } from "./src/current";
 import { FINAL_EVENT_LIMIT, FINAL_EVENT_TYPES, finalMessage, replyAsk, type ReplyAsk } from "./src/asks";
 import { canSendToDesk, deskInput, sendBlocker, sentNote, type DeskAttachment } from "./src/ask";
+import { browserTarget, type BrowserTarget } from "./src/browser";
 import {
   ASK_STATUS_LABEL,
   GROUP_LABEL,
@@ -3375,6 +3378,9 @@ function SwitchboardPage() {
       data-panel={slide.open ? "open" : "closed"}
       data-slide-phase={slide.phase}
     >
+      <OpenInBrowserButton
+        fallback={{ threadId: slideView, environmentId: slideView === null ? undefined : environmentOf(slideView) }}
+      />
       <div className="sb-list">
         <div className="sb-toolbar">
           {desk === null ? (
@@ -3986,6 +3992,140 @@ function UsageRing({ percent }: { percent: number }) {
         transform="rotate(-90 7 7)"
       />
     </svg>
+  );
+}
+
+const OPEN_IN_BROWSER = "Open in browser";
+
+/**
+ * The group of buttons on the right of the side panel's tab row, in the
+ * panel whose open tab is called `title` (so with the panel of another pane
+ * on screen too, it's this page's). Not part of the plugin SDK: if bb
+ * renames these, there's no group and no button.
+ */
+function panelButtonGroup(title: string): HTMLElement | null {
+  for (const row of document.querySelectorAll<HTMLElement>('aside [data-testid="thread-secondary-panel-top-chrome"]')) {
+    if (row.getBoundingClientRect().width === 0) continue;
+    const open = row.querySelector('[data-tab-pill] button[aria-pressed="true"]');
+    const shown = open?.querySelector("[title]")?.getAttribute("title") ?? open?.textContent ?? null;
+    if (shown === null || shown.trim() !== title.trim()) continue;
+    const group = row.lastElementChild;
+    if (group instanceof HTMLElement && group.getAttribute("role") !== "toolbar") return group;
+  }
+  return null;
+}
+
+/** What the hover card says the button will open. */
+function openInBrowserDetail(target: BrowserTarget): string {
+  const url = new URL(target.url);
+  if (target.kind === "page") return url.host;
+  const name = decodeURIComponent(url.pathname.slice(url.pathname.lastIndexOf("/") + 1));
+  return /\.(md|markdown|txt|csv|json|log|ya?ml)$/i.test(name) ? `${name}, as plain text` : name;
+}
+
+/**
+ * Open in browser, on the side panel's tab row beside bb's own buttons: it
+ * opens the tab you're on in your web browser, a web page at its address and
+ * a file through bb's server (src/browser.ts). Only while this page's panel
+ * is on screen, and only for a tab that has something to open. bb's Mac app
+ * hands a page's `window.open` to the default browser (a browser opens a new
+ * tab). The button takes bb's own buttons' look, and the theme's, as it sits
+ * among them; hovering it shows what it opens, as bb's Mac app doesn't show
+ * native tooltips.
+ */
+function OpenInBrowserButton({
+  fallback,
+}: {
+  fallback: { threadId: string | null; environmentId: string | undefined };
+}) {
+  const tabs = usePanelTabs();
+  const selected = tabs.open ? (tabs.tabs.find((tab) => tab.key === tabs.selectedKey) ?? null) : null;
+  const target =
+    selected === null ? null : browserTarget(selected.key, selected.detail, fallback, window.location.href);
+  const url = target?.url ?? null;
+  const title = target === null ? null : (selected?.title ?? null);
+  const [slot, setSlot] = useState<{ host: HTMLElement; className: string } | null>(null);
+
+  // Find bb's row, put a holder for the button at the front of its group,
+  // and put it back whenever bb redraws the row.
+  useEffect(() => {
+    if (url === null || title === null) {
+      setSlot(null);
+      return;
+    }
+    let host: HTMLElement | null = null;
+    const place = () => {
+      const group = panelButtonGroup(title);
+      if (group === null) {
+        if (host !== null) {
+          host.remove();
+          host = null;
+          setSlot(null);
+        }
+        return;
+      }
+      if (host !== null && host.parentElement === group && group.firstElementChild === host) return;
+      const holder = host ?? document.createElement("span");
+      holder.dataset.sbOpenInBrowser = "";
+      holder.style.display = "contents";
+      group.prepend(holder);
+      host = holder;
+      const sibling = [...group.querySelectorAll("button")].find((button) => !holder.contains(button));
+      setSlot({ host: holder, className: sibling?.className ?? "" });
+    };
+    place();
+    const timer = window.setInterval(place, 700);
+    return () => {
+      window.clearInterval(timer);
+      host?.remove();
+    };
+  }, [url, title]);
+
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    const anchor = buttonRef.current;
+    if (!hover || target === null || anchor === null) return;
+    const card = document.createElement("div");
+    card.className = "sb-usage-card";
+    card.setAttribute("role", "tooltip");
+    const row = document.createElement("div");
+    row.className = "sb-usage-card-row";
+    const heading = document.createElement("span");
+    heading.className = "sb-usage-card-title";
+    heading.textContent = OPEN_IN_BROWSER;
+    const detail = document.createElement("span");
+    detail.className = "sb-usage-card-detail";
+    detail.textContent = openInBrowserDetail(target);
+    row.append(heading, detail);
+    card.append(row);
+    document.body.append(card);
+    const box = anchor.getBoundingClientRect();
+    const width = card.offsetWidth;
+    const left = Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8));
+    card.style.left = `${Math.round(left)}px`;
+    card.style.top = `${Math.round(box.bottom + 6)}px`;
+    return () => card.remove();
+  }, [hover, url]);
+
+  if (slot === null || target === null) return null;
+  return createPortal(
+    <button
+      ref={buttonRef}
+      type="button"
+      className={`${slot.className} sb-open-browser`}
+      aria-label={`${OPEN_IN_BROWSER}: ${openInBrowserDetail(target)}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={() => {
+        setHover(false);
+        debugLog("open in browser", target);
+        window.open(target.url, "_blank", "noopener,noreferrer");
+      }}
+    >
+      <Icon name="Globe" fallback="ExternalLink" aria-hidden />
+    </button>,
+    slot.host,
   );
 }
 

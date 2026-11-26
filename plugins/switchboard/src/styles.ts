@@ -610,6 +610,12 @@ export const CSS = `
   app-region: no-drag;
   cursor: default;
 }
+/* Open in browser sits in the side panel's tab row, which drags the window
+   in bb's Mac app too, so it's cut out of it like bb's own buttons there. */
+.sb-open-browser {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
 .sb-usage-card {
   position: fixed;
   z-index: 2147483000;

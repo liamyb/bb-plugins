@@ -1,6 +1,6 @@
 ---
 name: switchboard
-description: What the Switchboard bb plugin is, its settings, its Waiting view (with Still with you) and rail badge, its Ask the desk button (a box that sends the front desk a request without leaving your chat) and usage gauge, the side panel sliding out of the narrow window, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, sending the desk a request from Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, thread links opening in the slide, committing from the slide or where bb's Commit button went, why a thread you've already read is still in Waiting under Still with you, or why a thread does or doesn't appear in it.
+description: What the Switchboard bb plugin is, its settings, its Waiting view (with Still with you) and rail badge, its Ask the desk button (a box that sends the front desk a request without leaving your chat) and usage gauge, the side panel sliding out of the narrow window and its Open in browser button, thread links in the slide, its Commit button, and how its "open in a pane" relay works. Use when the user asks about Switchboard, sending the desk a request from Switchboard, the compact chat list, the small second bb window, the Waiting view, the count on its rail icon, Ask the desk, the usage rings in its title bar, the window widening when the side panel opens, opening the side panel's tab in the browser (the globe button), thread links opening in the slide, committing from the slide or where bb's Commit button went, why a thread you've already read is still in Waiting under Still with you, or why a thread does or doesn't appear in it.
 ---
 
 # Switchboard
@@ -155,6 +155,27 @@ click listener in `app.tsx`.
   thread with it; when two threads share a title, `cardRowThread` falls back to the row's React
   props (a `thread` prop a level or two up, not bb's API), and with neither the click is left to
   bb. The row's "Show the whole message" button isn't matched, so it still expands the preview.
+- **Open in browser** (0.2.11, Liam's ask on 26 Nov): a globe button at the front of the group of
+  buttons on the right of the side panel's tab row (`aside
+  [data-testid="thread-secondary-panel-top-chrome"]`, its last child; the first is the
+  `role="toolbar"` of tabs). `OpenInBrowserButton` reads the open tab from `usePanelTabs()`;
+  `browserTarget` in `src/browser.ts` turns it into an address: a `browser` tab's http(s) URL, or
+  for a file tab (and a viewer plugin's tab with `params.path`/`source`, such as the PDF
+  viewer's) bb's own file route, `/api/v1/environments/<env>/files/<path>` or
+  `/api/v1/threads/<thread>/thread-storage/files/<path>`, made absolute against the page's
+  address. A terminal, new tab, info tab or host file gets no button. The button is portalled
+  (`react-dom`'s `createPortal`, which bb's build shims to the host's React) into a `span` with
+  `data-sb-open-in-browser`, placed again every 700ms if bb redraws the row, and only in the
+  panel whose pressed tab pill's title matches the SDK's open tab, so another pane's panel never
+  gets it. It copies the class of bb's own button beside it, so it takes bb's and the theme's
+  look, and has `-webkit-app-region: no-drag` (`.sb-open-browser`), since that row drags the
+  window in the Mac app. A click calls `window.open(url, "_blank", "noopener,noreferrer")`:
+  bb's Mac app's `setWindowOpenHandler` sends http(s) to `openExternalUrl` (the default
+  browser) and denies the window; a browser opens a tab. The SDK's `openUrl` wasn't used, as it
+  follows bb's in-app browser setting (`bb.openLinksInAppBrowser`, on by default) and would open
+  the page inside bb. bb's file route serves Markdown as `text/markdown` with `nosniff`, which
+  Chrome shows as plain text; hovering the button says so ("PLAN.md, as plain text"), in
+  Switchboard's own hover card, as native tooltips don't show in the Mac app.
 - **Commit:** bb 0.48.0 hid its own Commit button by default (the Git plugin's
   `showCommitButton`, `bb plugin config bb--git set showCommitButton true`) and made it a
   `placement: "header"` thread action, which bb shows only in the open thread's header (folded
@@ -336,6 +357,13 @@ window.
   that couldn't resize at all is marked unsupported until the page reloads.
 - The window stayed wide: it only shrinks back if its width hasn't changed by hand since it
   widened, and not after bb restarts. Drag it narrow by hand.
+- No globe button on the side panel: the open tab has nothing to open (a terminal, a new tab, a
+  host file), or bb renamed `thread-secondary-panel-top-chrome`. With the debug log on, a click
+  logs `open in browser` and the address. A file that opens as text in the browser is Markdown or
+  another text file, which bb serves as plain text; HTML, PDFs and pictures show as themselves.
+- The side panel's tab row doesn't match the theme: that's the theme's, not Switchboard's.
+  Palm Noir and Mixtape style it (`thread-secondary-panel-top-chrome` in their `skin.css`);
+  Sandbar leaves it as bb draws it, which already matches its bars.
 - Ask the desk opens New chat instead: no active top-level thread in the `frontDesk` section
   (`bb thread list --section <id> --json`).
 - Ask the desk's box says "It didn't send": the send was refused (the message is in the error);
