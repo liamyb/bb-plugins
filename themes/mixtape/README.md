@@ -20,6 +20,9 @@ move; it rests when nothing runs, and whenever macOS has Reduce motion on.
 [Switchboard](../../plugins/switchboard/)'s rows take the thread list's look: bold titles, LCD
 times and states, and a purple bar for the open chat.
 
+The side panel's row of tabs (files, web pages, terminals) is brushed silver like the pane
+headers, and the tab you're on is a green LCD readout.
+
 If you use [Aura](https://github.com/MateoCerquetella/bb-plugins), its wallpaper is hidden while Mixtape is on, so the display
 stays black. Switch back to Sandbar and it returns.
 

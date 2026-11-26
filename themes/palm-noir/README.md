@@ -21,6 +21,10 @@ motion on. Palm Noir doesn't turn on the strip itself.
 times and states, and a slice of the sunset for the open chat. Its slide, where chats open, has the
 wallpaper too.
 
+The side panel's row of tabs (files, web pages, terminals) is a bar like the pane headers: the
+night sky with the neon horizon under it, so it runs on from the header beside it, and the tab
+you're on lights up as a teal tube.
+
 Behind the threads, and filling New thread, is the same coast as a wallpaper: a striped sun going
 into the sea between two clusters of palms, with towers on the shore. It's a neon night with stars
 in both light and dark mode; for a golden-hour dusk in light mode instead, set

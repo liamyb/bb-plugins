@@ -1168,7 +1168,8 @@ body:has([data-nav-rail-item="usage-meter/usage"] > button:is([data-state="delay
   [data-testid="sidebar-footer-body"],
   [data-testid="app-window-title-bar"],
   [data-testid="app-sidebar-trigger-overlay"],
-  [data-testid="split-workspace-panel-toggle"]
+  [data-testid="split-workspace-panel-toggle"],
+  [data-testid="thread-secondary-panel-top-chrome"]
 ) :is(button, a[data-sidebar="menu-button"]):not([data-pane-family-label]),
 [data-sidebar="sidebar"] button[aria-label^="Settings"] {
   color: var(--pn-on-night);
@@ -1305,6 +1306,53 @@ header:has(> [data-testid="app-page-header-content-row"]) [data-testid="app-page
 
 [data-pane-family-label] {
   font-weight: 700;
+}
+
+/* ------------------------------------------- The side panel's tab row */
+
+/*
+ * The side panel's row of tabs (files, web pages, terminals) is a bar like
+ * the pane headers beside it: the night sky, the sunset along its foot and
+ * the neon horizon under it. bb's colours are night inside it, so its scroll
+ * arrows and the fades at the ends of a long row of tabs are too. The tab
+ * you're on lights up as a teal tube, like the page you're on in the rail.
+ */
+aside :has(> [data-testid="thread-secondary-panel-top-chrome"]) {
+  --sidebar: var(--pn-night);
+  --foreground: var(--pn-on-night);
+  --muted-foreground: var(--pn-on-night-dim);
+  --subtle-foreground: var(--pn-on-night-faint);
+  --state-active: transparent;
+  --state-hover: rgb(255 255 255 / 0.10);
+  --surface-raised-solid: var(--pn-night-rise);
+  --ring: var(--pn-teal);
+  background-color: var(--pn-night);
+  background-image:
+    var(--pn-horizon),
+    linear-gradient(180deg, transparent 40%, rgb(255 61 139 / 0.16) 82%, rgb(255 138 61 / 0.26) 100%);
+  background-size: 100% 2px, 100% 100%;
+  background-position: bottom, 0 0;
+  background-repeat: no-repeat;
+  color: var(--pn-on-night);
+}
+
+/*
+ * The tabs scroll sideways inside a box that clips anything outside it, so
+ * a glow round the tab you're on showed as a square. The tube keeps its
+ * ring and goes without the glow.
+ */
+aside [data-testid="thread-secondary-panel-top-chrome"] [data-tab-pill] button[aria-pressed]:is([aria-pressed="true"], :active) {
+  box-shadow: inset 0 0 0 1px var(--pn-teal);
+}
+
+/*
+ * The line down the panel's left edge (drawn by its resize handle) is bb's
+ * pale border colour, which showed as a light stripe between the dark bars.
+ * Beside the tab row it's the night's own line; below it, beside the page,
+ * it stays bb's, and it still lights up under the pointer.
+ */
+[data-panel-resize-snap-handle][aria-label*="right panel"]:not(:hover) > span:last-child {
+  background-image: linear-gradient(180deg, var(--pn-night-line) var(--bb-app-chrome-row-height), transparent var(--bb-app-chrome-row-height));
 }
 
 /* ------------------------------------------- Wallpaper behind the threads */
